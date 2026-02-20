@@ -3,7 +3,6 @@ from database.connection import connect
 # ==========================================
 # GESTIÓN DE MONEDAS
 # ==========================================
-
 def obtener_monedas():
     conn = connect()
     cursor = conn.cursor()
@@ -16,7 +15,6 @@ def guardar_moneda(nombre, simbolo, tasa_cambio, es_principal=0):
     conn = connect()
     cursor = conn.cursor()
     try:
-        # Si esta nueva moneda es la principal, quitamos el status a las demás
         if es_principal == 1:
             cursor.execute("UPDATE monedas SET es_principal = 0")
             
@@ -31,11 +29,29 @@ def guardar_moneda(nombre, simbolo, tasa_cambio, es_principal=0):
     finally:
         conn.close()
 
+def actualizar_moneda(id_moneda, nombre, simbolo, tasa_cambio, es_principal=0):
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        if es_principal == 1:
+            cursor.execute("UPDATE monedas SET es_principal = 0")
+            
+        cursor.execute("""
+            UPDATE monedas 
+            SET nombre = ?, simbolo = ?, tasa_cambio = ?, es_principal = ?
+            WHERE id = ?
+        """, (nombre, simbolo, tasa_cambio, es_principal, id_moneda))
+        conn.commit()
+        return True, "Tasa de cambio y datos actualizados."
+    except Exception as e:
+        return False, f"Error al actualizar: {str(e)}"
+    finally:
+        conn.close()
+
 def eliminar_moneda(id_moneda):
     conn = connect()
     cursor = conn.cursor()
     try:
-        # Validar que no se elimine la moneda principal
         cursor.execute("SELECT es_principal FROM monedas WHERE id = ?", (id_moneda,))
         if cursor.fetchone()['es_principal'] == 1:
             return False, "No puedes eliminar la moneda principal del sistema."
@@ -51,7 +67,6 @@ def eliminar_moneda(id_moneda):
 # ==========================================
 # GESTIÓN DE LISTAS DE PRECIOS
 # ==========================================
-
 def obtener_listas_precios():
     conn = connect()
     cursor = conn.cursor()
@@ -83,5 +98,82 @@ def eliminar_lista_precio(id_lista):
         return True, "Lista eliminada."
     except Exception as e:
         return False, f"Error: No se puede borrar si hay clientes usándola. ({e})"
+    finally:
+        conn.close()
+
+# ==========================================
+# GESTIÓN DE DEPARTAMENTOS
+# ==========================================
+def obtener_departamentos():
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM departamentos ORDER BY id")
+    resultados = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return resultados
+
+def guardar_departamento(nombre, descripcion):
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO departamentos (nombre, descripcion) VALUES (?, ?)", (nombre, descripcion))
+        conn.commit()
+        return True, "Departamento registrado."
+    except Exception as e:
+        return False, f"Error (¿Nombre duplicado?): {str(e)}"
+    finally:
+        conn.close()
+
+def eliminar_departamento(id_dep):
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        if id_dep == 1:
+            return False, "No puedes eliminar el departamento 'General'."
+        cursor.execute("DELETE FROM departamentos WHERE id = ?", (id_dep,))
+        conn.commit()
+        return True, "Departamento eliminado."
+    except Exception as e:
+        return False, f"Error: No se puede borrar si hay productos usándolo. ({e})"
+    finally:
+        conn.close()
+
+# ==========================================
+# GESTIÓN DE MÉTODOS DE PAGO
+# ==========================================
+def obtener_metodos_pago():
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT mp.id, mp.nombre, mp.moneda_id, m.nombre as moneda_nombre, m.simbolo 
+        FROM metodos_pago mp
+        JOIN monedas m ON mp.moneda_id = m.id
+        ORDER BY m.id, mp.nombre
+    """)
+    res = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return res
+
+def guardar_metodo_pago(nombre, moneda_id):
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO metodos_pago (nombre, moneda_id) VALUES (?, ?)", (nombre, moneda_id))
+        conn.commit()
+        return True, "Método de pago registrado."
+    except Exception as e:
+        return False, f"Error: {e}"
+    finally:
+        conn.close()
+
+def eliminar_metodo_pago(id_metodo):
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM metodos_pago WHERE id = ?", (id_metodo,))
+        conn.commit()
+        return True, "Método eliminado."
+    except Exception as e:
+        return False, f"Error: {e}"
     finally:
         conn.close()

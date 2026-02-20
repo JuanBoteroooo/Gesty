@@ -91,7 +91,7 @@ def inicializar_db():
     );
     """)
 
-    # La tabla maestra de productos (Solo catálogo, sin precios ni stock)
+    # La tabla maestra de productos
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS productos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,6 +100,16 @@ def inicializar_db():
         departamento_id INTEGER,
         cantidad_minima INTEGER NOT NULL DEFAULT 5,
         FOREIGN KEY(departamento_id) REFERENCES departamentos(id) ON DELETE SET NULL
+    );
+    """)
+
+    # 🔥 NUEVA TABLA: Métodos de Pago asociados a su moneda correspondiente
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS metodos_pago (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        moneda_id INTEGER NOT NULL,
+        FOREIGN KEY(moneda_id) REFERENCES monedas(id) ON DELETE CASCADE
     );
     """)
 
@@ -169,13 +179,26 @@ def inicializar_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         venta_id INTEGER NOT NULL,
         producto_id INTEGER NOT NULL,
-        almacen_origen_id INTEGER NOT NULL,  -- ¡NUEVO! Saber de qué almacén salió
+        almacen_origen_id INTEGER NOT NULL,
         cantidad INTEGER NOT NULL,
         precio_unitario REAL NOT NULL,
-        precio_costo_momento REAL NOT NULL,  -- ¡NUEVO! Para calcular ganancias exactas del mes
+        precio_costo_momento REAL NOT NULL,
         FOREIGN KEY(venta_id) REFERENCES ventas(id) ON DELETE CASCADE,
         FOREIGN KEY(producto_id) REFERENCES productos(id),
         FOREIGN KEY(almacen_origen_id) REFERENCES almacenes(id)
+    );
+    """)
+
+    # 🔥 NUEVA TABLA: Registro exacto de cómo pagó el cliente (Soporta pagos mixtos)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS pagos_venta (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        venta_id INTEGER NOT NULL,
+        metodo_pago_id INTEGER NOT NULL,
+        monto REAL NOT NULL,
+        tasa_calculo REAL NOT NULL,
+        FOREIGN KEY(venta_id) REFERENCES ventas(id) ON DELETE CASCADE,
+        FOREIGN KEY(metodo_pago_id) REFERENCES metodos_pago(id)
     );
     """)
 
@@ -198,9 +221,16 @@ def inicializar_db():
     # Cliente Genérico
     cursor.execute("INSERT OR IGNORE INTO clientes (id, documento, nombre, lista_precio_id) VALUES (1, '0000', 'Cliente Mostrador', 1)")
 
+    # 🔥 MÉTODOS DE PAGO POR DEFECTO ASOCIADOS A SU MONEDA
+    cursor.execute("INSERT OR IGNORE INTO metodos_pago (id, nombre, moneda_id) VALUES (1, 'Zelle', 1)")
+    cursor.execute("INSERT OR IGNORE INTO metodos_pago (id, nombre, moneda_id) VALUES (2, 'Efectivo Divisas', 1)")
+    cursor.execute("INSERT OR IGNORE INTO metodos_pago (id, nombre, moneda_id) VALUES (3, 'Pago Móvil', 2)")
+    cursor.execute("INSERT OR IGNORE INTO metodos_pago (id, nombre, moneda_id) VALUES (4, 'Punto de Venta', 2)")
+    cursor.execute("INSERT OR IGNORE INTO metodos_pago (id, nombre, moneda_id) VALUES (5, 'Efectivo Bs', 2)")
+
     conn.commit()
     conn.close()
-    print("¡Base de Datos Gesty ERP creada exitosamente y lista para usar!")
+    print("¡Base de Datos Gesty ERP creada/actualizada exitosamente y lista para usar!")
 
 if __name__ == "__main__":
     inicializar_db()

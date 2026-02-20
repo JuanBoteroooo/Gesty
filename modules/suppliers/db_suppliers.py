@@ -1,5 +1,6 @@
 from database.connection import connect
 
+
 def obtener_proveedores():
     conn = connect()
     cursor = conn.cursor()
@@ -8,11 +9,26 @@ def obtener_proveedores():
     conn.close()
     return resultados
 
-def guardar_proveedor(documento, nombre, telefono, direccion):
+
+# ============================================
+# CREAR PROVEEDOR
+# ============================================
+def crear_proveedor(data):
     conn = connect()
     cursor = conn.cursor()
     try:
-        cursor.execute("INSERT INTO proveedores (documento, nombre, telefono, direccion) VALUES (?, ?, ?, ?)", (documento, nombre, telefono, direccion))
+        cursor.execute(
+            """
+            INSERT INTO proveedores (documento, nombre, telefono, direccion)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                data["documento"],
+                data["nombre"],
+                data["telefono"],
+                data["direccion"],
+            ),
+        )
         conn.commit()
         return True, "Proveedor registrado exitosamente."
     except Exception as e:
@@ -20,11 +36,28 @@ def guardar_proveedor(documento, nombre, telefono, direccion):
     finally:
         conn.close()
 
-def editar_proveedor(id_prov, documento, nombre, telefono, direccion):
+
+# ============================================
+# ACTUALIZAR PROVEEDOR
+# ============================================
+def actualizar_proveedor(id_proveedor, data):
     conn = connect()
     cursor = conn.cursor()
     try:
-        cursor.execute("UPDATE proveedores SET documento=?, nombre=?, telefono=?, direccion=? WHERE id=?", (documento, nombre, telefono, direccion, id_prov))
+        cursor.execute(
+            """
+            UPDATE proveedores
+            SET documento=?, nombre=?, telefono=?, direccion=?
+            WHERE id=?
+            """,
+            (
+                data["documento"],
+                data["nombre"],
+                data["telefono"],
+                data["direccion"],
+                id_proveedor,
+            ),
+        )
         conn.commit()
         return True, "Proveedor actualizado correctamente."
     except Exception as e:
@@ -32,14 +65,21 @@ def editar_proveedor(id_prov, documento, nombre, telefono, direccion):
     finally:
         conn.close()
 
+
+# ============================================
+# ELIMINAR PROVEEDOR
+# ============================================
 def eliminar_proveedor(id_proveedor):
     conn = connect()
     cursor = conn.cursor()
     try:
-        cursor.execute("DELETE FROM proveedores WHERE id = ?", (id_proveedor,))
+        cursor.execute(
+            "DELETE FROM proveedores WHERE id = ?",
+            (id_proveedor,),
+        )
         conn.commit()
         return True, "Proveedor eliminado del sistema."
-    except Exception as e:
+    except Exception:
         return False, "No se puede eliminar: El proveedor tiene productos asociados."
     finally:
         conn.close()

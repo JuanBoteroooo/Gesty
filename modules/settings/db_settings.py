@@ -177,3 +177,92 @@ def eliminar_metodo_pago(id_metodo):
         return False, f"Error: {e}"
     finally:
         conn.close()
+
+# ==========================================
+# GESTIÓN DE ALMACENES
+# ==========================================
+def obtener_almacenes():
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM almacenes ORDER BY id")
+    resultados = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return resultados
+
+def guardar_almacen(nombre, ubicacion):
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO almacenes (nombre, ubicacion) VALUES (?, ?)", (nombre, ubicacion))
+        conn.commit()
+        return True, "Almacén registrado."
+    except Exception as e:
+        return False, f"Error: {str(e)}"
+    finally:
+        conn.close()
+
+def eliminar_almacen(id_almacen):
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        if id_almacen == 1:
+            return False, "No puedes eliminar el Almacén 'Principal'."
+        cursor.execute("DELETE FROM almacenes WHERE id = ?", (id_almacen,))
+        conn.commit()
+        return True, "Almacén eliminado."
+    except Exception as e:
+        return False, f"Error: No se puede borrar si hay productos usándolo. ({e})"
+    finally:
+        conn.close()
+
+# ==========================================
+# 🔥 NUEVO: GESTIÓN DE USUARIOS Y ROLES
+# ==========================================
+def obtener_roles():
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, nombre FROM roles ORDER BY id")
+    res = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return res
+
+def obtener_usuarios():
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT u.id, u.nombre, u.usuario, u.rol_id, r.nombre as rol_nombre 
+        FROM usuarios u 
+        JOIN roles r ON u.rol_id = r.id 
+        ORDER BY u.id
+    """)
+    res = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return res
+
+def guardar_usuario(nombre, usuario, password, rol_id):
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO usuarios (nombre, usuario, password, rol_id) VALUES (?, ?, ?, ?)", 
+                       (nombre, usuario, password, rol_id))
+        conn.commit()
+        return True, "Usuario registrado exitosamente."
+    except Exception as e:
+        return False, f"Error (¿Usuario duplicado?): {str(e)}"
+    finally:
+        conn.close()
+
+def eliminar_usuario(usuario_id):
+    if usuario_id == 1: # Protección de oro
+        return False, "Por seguridad, el Administrador Principal (ID 1) no puede ser eliminado."
+        
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM usuarios WHERE id = ?", (usuario_id,))
+        conn.commit()
+        return True, "Usuario eliminado."
+    except Exception as e:
+        return False, f"Error al eliminar usuario: {str(e)}"
+    finally:
+        conn.close()

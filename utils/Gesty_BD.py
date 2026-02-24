@@ -39,7 +39,18 @@ def inicializar_db():
     # 2. PRODUCTOS, CLIENTES Y MÉTODOS
     # ==========================================
     cursor.execute("CREATE TABLE IF NOT EXISTS clientes (id INTEGER PRIMARY KEY AUTOINCREMENT, documento TEXT UNIQUE NOT NULL, nombre TEXT NOT NULL, telefono TEXT, direccion TEXT, lista_precio_id INTEGER NOT NULL DEFAULT 1, FOREIGN KEY(lista_precio_id) REFERENCES listas_precios(id));")
-    cursor.execute("CREATE TABLE IF NOT EXISTS productos (id INTEGER PRIMARY KEY AUTOINCREMENT, codigo TEXT UNIQUE NOT NULL, nombre TEXT NOT NULL, departamento_id INTEGER, cantidad_minima INTEGER NOT NULL DEFAULT 5, FOREIGN KEY(departamento_id) REFERENCES departamentos(id) ON DELETE SET NULL);")
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS productos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo TEXT UNIQUE,
+        nombre TEXT NOT NULL,
+        departamento_id INTEGER,
+        proveedor_id INTEGER,
+        stock_minimo REAL DEFAULT 5.0,  -- 🔥 ESTA ES LA LÍNEA NUEVA
+        FOREIGN KEY(departamento_id) REFERENCES departamentos(id),
+        FOREIGN KEY(proveedor_id) REFERENCES proveedores(id)
+    )
+    ''')
     cursor.execute("CREATE TABLE IF NOT EXISTS metodos_pago (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL, moneda_id INTEGER NOT NULL, FOREIGN KEY(moneda_id) REFERENCES monedas(id) ON DELETE CASCADE);")
 
     # ==========================================

@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from modules.inventory import db_inventory
 from modules.settings import db_settings 
+from modules.suppliers import db_suppliers 
 from utils import session
 
 class VistaInventario(QWidget):
@@ -76,7 +77,6 @@ class VistaInventario(QWidget):
         
         layout_tarjeta.addLayout(barra_herramientas)
         
-        # ================= TABLA BASE =================
         self.tabla = QTableWidget()
         self.tabla.verticalHeader().setVisible(False)
         self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -107,7 +107,6 @@ class VistaInventario(QWidget):
         filas = self.tabla.selectedItems()
         self.producto_seleccionado = self.tabla.item(filas[0].row(), 0).data(Qt.ItemDataRole.UserRole) if filas else None
 
-    # 🔥 TABLA LIMPIA: SIN PRECIOS, SOLO INVENTARIO Y STOCK 🔥
     def cargar_datos(self):
         columnas_finales = ["ID", "CÓDIGO", "DESCRIPCIÓN", "CATEGORÍA", "PROVEEDOR", "STOCK TOTAL"]
         
@@ -155,7 +154,7 @@ class VistaInventario(QWidget):
     def abrir_modal_traspaso(self):
         if not self.producto_seleccionado: return self.mostrar_mensaje("Aviso", "Selecciona un producto.", "error")
         
-        almacenes = db_inventory.obtener_almacenes()
+        almacenes = db_settings.obtener_almacenes()
         if len(almacenes) < 2: return self.mostrar_mensaje("Error", "Necesitas al menos 2 almacenes para hacer un traspaso.", "error")
 
         dialog = QDialog(self)
@@ -215,7 +214,7 @@ class VistaInventario(QWidget):
         layout = QFormLayout(dialog)
         
         combo_almacen = QComboBox()
-        for a in db_inventory.obtener_almacenes(): combo_almacen.addItem(a['nombre'], a['id'])
+        for a in db_settings.obtener_almacenes(): combo_almacen.addItem(a['nombre'], a['id'])
             
         combo_tipo = QComboBox()
         combo_tipo.addItem("Entrada (Suma Stock)", "AJUSTE_POSITIVO")
@@ -283,7 +282,6 @@ class VistaInventario(QWidget):
             tabla.setItem(i, 1, item_tipo)
             tabla.setItem(i, 2, QTableWidgetItem(str(h['cantidad'])))
             
-            # 🔥 CORRECCIÓN: Si el origen está vacío (ej. es una compra nueva), muestra el destino
             if h['tipo_movimiento'] == 'TRASPASO': 
                 almacen_texto = f"{h['almacen_origen']} ➡️ {h['almacen_destino']}"
             else:
@@ -302,12 +300,12 @@ class VistaInventario(QWidget):
             return self.mostrar_mensaje("Aviso", "Selecciona un producto.", "error")
 
         self.listas_precios = db_settings.obtener_listas_precios()
-        departamentos = db_inventory.obtener_departamentos()
-        proveedores = db_inventory.obtener_proveedores()
-        almacenes = db_inventory.obtener_almacenes()
+        departamentos = db_settings.obtener_departamentos()
+        proveedores = db_suppliers.obtener_proveedores()
+        almacenes = db_settings.obtener_almacenes()
         
         if not proveedores or not almacenes or not departamentos:
-            return self.mostrar_mensaje("¡Atención!", "Debes registrar al menos 1 Proveedor, 1 Departamento y 1 Almacén en Ajustes.", "error")
+            return self.mostrar_mensaje("¡Atención!", "Debes registrar al menos 1 Proveedor, 1 Departamento y 1 Almacén en Ajustes/Proveedores.", "error")
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Ficha Técnica del Producto" if modo == "editar" else "Nuevo Producto")
@@ -331,7 +329,7 @@ class VistaInventario(QWidget):
         
         tabs.addTab(tab_general, "📋 Datos Generales")
         tabs.addTab(tab_precios, "💰 Costos y Precios")
-        tabs.addTab(tab_stock, "📦 Stock Inicial")
+        tabs.addTab(tab_stock, "📦 Cantidades (Stock)")
         layout_principal.addWidget(tabs)
 
         form_general = QFormLayout(tab_general)
@@ -368,8 +366,10 @@ class VistaInventario(QWidget):
             caja_sec.setMaximum(99999999.99)
             caja_sec.setPrefix(f"{moneda_sec['simbolo']} ")
             caja_sec.setStyleSheet(f"color: {color_texto}; background-color: #F8FAFC;")
-            caja_base.setValue(float(valor_inicial))
-            caja_sec.setValue(float(valor_inicial) * tasa_actual)
+            
+            valor_seguro = float(valor_inicial or 0)
+            caja_base.setValue(valor_seguro)
+            caja_sec.setValue(valor_seguro * tasa_actual)
             
             def on_base_change(val):
                 caja_sec.blockSignals(True)
@@ -386,7 +386,7 @@ class VistaInventario(QWidget):
             fila.addWidget(caja_sec)
             return fila, caja_base
         
-        valor_costo_ini = self.producto_seleccionado.get("costo", 0) if modo == "editar" else 0
+        valor_costo_ini = float(self.producto_seleccionado.get("costo") or 0) if modo == "editar" else 0
         layout_costo, self.caja_costo_base = crear_cajas_duales(valor_costo_ini, False)
         form_precios.addRow("Costo de Compra:", layout_costo)
         
@@ -394,7 +394,7 @@ class VistaInventario(QWidget):
         precios_actuales = db_inventory.obtener_precios_producto(self.producto_seleccionado['id']) if modo == "editar" else {}
             
         for lista in self.listas_precios:
-            valor_ini = precios_actuales.get(lista['id'], 0.0)
+            valor_ini = float(precios_actuales.get(lista['id']) or 0)
             layout_precio, caja_base = crear_cajas_duales(valor_ini, True)
             self.campos_precios_dict[lista['id']] = caja_base
             form_precios.addRow(f"Precio {lista['nombre']}:", layout_precio)
@@ -419,14 +419,12 @@ class VistaInventario(QWidget):
             idx_prov = combo_proveedor.findData(self.producto_seleccionado.get("proveedor_id"))
             if idx_prov >= 0: combo_proveedor.setCurrentIndex(idx_prov)
             
-            for spin in self.campos_stock_dict.values():
-                spin.setEnabled(False)
-                spin.setToolTip("Usa los botones de Ajuste o Traspaso para modificar el stock.")
+            # 🔥 AQUÍ QUITAMOS EL BLOQUEO DEL STOCK PARA QUE PUEDAS EDITARLO MANUALMENTE 🔥
 
         box_botones = QHBoxLayout()
         btn_cancelar = QPushButton("Cancelar")
         btn_cancelar.setStyleSheet("padding: 10px 15px; background-color: #F1F5F9; color: #475569; border-radius: 4px; font-weight: bold;")
-        btn_guardar = QPushButton("💾 Guardar")
+        btn_guardar = QPushButton("💾 Guardar Cambios")
         btn_guardar.setStyleSheet("padding: 10px 15px; background-color: #2563EB; color: white; border-radius: 4px; font-weight: bold;")
         btn_cancelar.clicked.connect(dialog.reject)
         

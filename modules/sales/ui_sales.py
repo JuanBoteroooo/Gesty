@@ -3,11 +3,13 @@ import webbrowser
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QComboBox, QFrame, QAbstractItemView, QMessageBox, 
-                             QSpinBox, QDoubleSpinBox, QDialog, QFormLayout, QCompleter, QStackedWidget)
+                             QSpinBox, QDoubleSpinBox, QDialog, QFormLayout, QCompleter, QStackedWidget, QInputDialog)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
+from datetime import datetime, timedelta
 from modules.sales import db_sales
 from modules.customers import db_customers 
+from utils import session
 
 class VistaVentas(QWidget):
     def __init__(self):
@@ -65,13 +67,21 @@ class VistaVentas(QWidget):
         lbl_titulo = QLabel("🛒 Terminal de Ventas (POS)")
         lbl_titulo.setStyleSheet("font-size: 26px; font-weight: 900; color: #0F172A;")
         
+        cabecera_pos.addWidget(lbl_titulo)
+        cabecera_pos.addStretch()
+
+        # 🔥 BOTÓN DE REIMPRIMIR FACTURA
+        btn_reimprimir = QPushButton("🖨️ Reimprimir")
+        btn_reimprimir.setStyleSheet("padding: 10px 20px; background-color: #3B82F6; color: white; border-radius: 6px; font-weight: bold; font-size: 14px; margin-right: 15px;")
+        btn_reimprimir.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_reimprimir.clicked.connect(self.modal_reimprimir)
+        cabecera_pos.addWidget(btn_reimprimir)
+
         btn_cerrar_caja = QPushButton("🔒 CERRAR TURNO (REPORTE Z)")
         btn_cerrar_caja.setStyleSheet("padding: 10px 20px; background-color: #FEF2F2; color: #DC2626; border: 2px solid #DC2626; border-radius: 6px; font-weight: bold; font-size: 14px;")
         btn_cerrar_caja.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_cerrar_caja.clicked.connect(self.modal_cerrar_caja)
         
-        cabecera_pos.addWidget(lbl_titulo)
-        cabecera_pos.addStretch()
         cabecera_pos.addWidget(btn_cerrar_caja)
         layout_pos_principal.addLayout(cabecera_pos)
         
@@ -115,6 +125,9 @@ class VistaVentas(QWidget):
         self.tabla_carrito.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.tabla_carrito.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         self.tabla_carrito.verticalHeader().setVisible(False)
+        
+        # 🔥 MEJORA DE ALTURA EN EL CARRITO
+        self.tabla_carrito.verticalHeader().setDefaultSectionSize(50) 
         self.tabla_carrito.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla_carrito.setStyleSheet("QTableWidget { background-color: #FFFFFF; color: #000000; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 14px; font-weight: bold; } QTableWidget::item { padding: 5px; border-bottom: 1px solid #F1F5F9; } QHeaderView::section { background-color: #F8FAFC; color: #64748B; font-weight: bold; padding: 10px; border: none; border-bottom: 2px solid #E2E8F0; font-size: 12px; }")
         layout_izq.addWidget(self.tabla_carrito)
@@ -133,7 +146,7 @@ class VistaVentas(QWidget):
         layout_der.setContentsMargins(25, 25, 25, 25)
         layout_der.setSpacing(15)
         
-        estilo_dropdown = "QComboBox { padding: 10px; border: 1px solid #CBD5E1; border-radius: 6px; color: #000000; font-size: 15px; background-color: #F8FAFC; font-weight: bold; } QComboBox QAbstractItemView { background-color: #FFFFFF; color: #000000; font-size: 14px; selection-background-color: #EFF6FF; } QComboBox QLineEdit { background: transparent; border: none; color: #000000; font-weight: bold; font-size: 15px; }"
+        estilo_dropdown = "QComboBox { padding: 10px; border: 1px solid #CBD5E1; border-radius: 6px; color: #000000; font-size: 15px; background-color: #F8FAFC; font-weight: bold; } QComboBox QAbstractItemView { background-color: #FFFFFF; color: #000000; font-size: 14px; selection-background-color: #EFF6FF; }"
         estilo_titulo_opcion = "font-size: 14px; font-weight: 900; color: #64748B; margin-top: 5px;"
         
         layout_der.addWidget(QLabel("🏭 Almacén de Despacho:", styleSheet=estilo_titulo_opcion))
@@ -146,7 +159,6 @@ class VistaVentas(QWidget):
         fila_cliente = QHBoxLayout()
         self.combo_clientes = QComboBox()
         self.combo_clientes.setEditable(True) 
-        self.combo_clientes.lineEdit().setPlaceholderText("Escribe para buscar...")
         self.combo_clientes.setStyleSheet(estilo_dropdown)
         self.combo_clientes.currentIndexChanged.connect(self.cambiar_cliente)
         
@@ -197,7 +209,7 @@ class VistaVentas(QWidget):
         btn_procesar.clicked.connect(self.abrir_modal_pago)
         layout_der.addWidget(btn_procesar)
         
-        # 🔥 NUEVOS BOTONES DE PRESUPUESTO
+        # BOTONES DE PRESUPUESTO
         fila_presupuestos = QHBoxLayout()
         btn_guardar_presupuesto = QPushButton("📝 Crear\nPresupuesto")
         btn_guardar_presupuesto.setFixedHeight(45)
@@ -254,7 +266,7 @@ class VistaVentas(QWidget):
         btn_abrir.setCursor(Qt.CursorShape.PointingHandCursor)
         
         def procesar_apertura():
-            exito, msg = db_sales.abrir_caja(spin_monto.value())
+            exito, msg = db_sales.abrir_caja(spin_monto.value(), session.usuario_actual['id'])
             if exito:
                 QMessageBox.information(self, "Caja Abierta", msg)
                 dialog.accept()
@@ -285,18 +297,23 @@ class VistaVentas(QWidget):
         
         tabla = QTableWidget()
         tabla.setColumnCount(2)
-        tabla.setHorizontalHeaderLabels(["MÉTODO", "TOTAL RECAUDADO"])
+        tabla.setHorizontalHeaderLabels(["CONCEPTO", "MONTO RECAUDADO"])
         tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         tabla.verticalHeader().setVisible(False)
         tabla.setStyleSheet("QTableWidget { background-color: #F8FAFC; color: black; font-weight: bold; }")
         
         tabla.setRowCount(len(resumen) + 1)
+        
         tabla.setItem(0, 0, QTableWidgetItem("💵 Fondo de Caja (Inicial)"))
         tabla.setItem(0, 1, QTableWidgetItem(f"$ {monto_ini:.2f}"))
         
-        for i, fila in enumerate(resumen):
-            tabla.setItem(i+1, 0, QTableWidgetItem(fila['metodo']))
-            tabla.setItem(i+1, 1, QTableWidgetItem(f"{fila['simbolo']} {fila['total']:.2f}"))
+        fila_actual = 1
+        for fila in resumen:
+            tabla.setItem(fila_actual, 0, QTableWidgetItem(fila['metodo']))
+            item_val = QTableWidgetItem(f"{fila['simbolo']} {fila['total']:.2f}")
+            item_val.setForeground(QColor("#16A34A"))
+            tabla.setItem(fila_actual, 1, item_val)
+            fila_actual += 1
             
         layout.addWidget(tabla)
         
@@ -319,7 +336,58 @@ class VistaVentas(QWidget):
         layout.addWidget(btn_cerrar)
         dialog.exec()
 
-    # ================= LOGICA DE PRESUPUESTOS 🔥 =================
+    # ================= LOGICA DE REIMPRESIÓN =================
+    def modal_reimprimir(self):
+        ventas = db_sales.obtener_ventas_recientes()
+        if not ventas:
+            return QMessageBox.information(self, "Aviso", "No hay ventas registradas en el historial.")
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Reimprimir Factura")
+        dialog.setFixedWidth(550)
+        dialog.setStyleSheet("QDialog { background-color: #FFFFFF; }")
+        layout = QVBoxLayout(dialog)
+
+        lbl = QLabel("Selecciona la factura que deseas reimprimir:")
+        lbl.setStyleSheet("font-weight: bold; font-size: 14px;")
+        layout.addWidget(lbl)
+
+        tabla = QTableWidget()
+        tabla.setColumnCount(4)
+        tabla.setHorizontalHeaderLabels(["NRO.", "FECHA", "CLIENTE", "TOTAL ($)"])
+        tabla.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        tabla.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        tabla.setStyleSheet("QTableWidget { background-color: #F8FAFC; color: black; font-weight: bold; }")
+
+        tabla.setRowCount(len(ventas))
+        for i, v in enumerate(ventas):
+            item_id = QTableWidgetItem(f"{v['id']:06d}")
+            item_id.setData(Qt.ItemDataRole.UserRole, v['id'])
+            tabla.setItem(i, 0, item_id)
+            tabla.setItem(i, 1, QTableWidgetItem(v['fecha_hora'].split(" ")[0]))
+            tabla.setItem(i, 2, QTableWidgetItem(v['cliente_nombre']))
+            tabla.setItem(i, 3, QTableWidgetItem(f"{v['total_venta']:.2f}"))
+
+        layout.addWidget(tabla)
+
+        btn_imprimir = QPushButton("🖨️ Imprimir Seleccionada")
+        btn_imprimir.setStyleSheet("padding: 10px; background-color: #2563EB; color: white; border-radius: 6px; font-weight: bold; font-size: 14px;")
+        btn_imprimir.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        def imprimir():
+            filas = tabla.selectedItems()
+            if not filas: return QMessageBox.warning(dialog, "Error", "Selecciona una factura de la lista.")
+            v_id = tabla.item(filas[0].row(), 0).data(Qt.ItemDataRole.UserRole)
+            self.generar_ticket(v_id)
+            dialog.accept()
+
+        btn_imprimir.clicked.connect(imprimir)
+        layout.addWidget(btn_imprimir)
+        dialog.exec()
+
+    # ================= LOGICA DE PRESUPUESTOS =================
     def guardar_presupuesto(self):
         if not self.carrito:
             return QMessageBox.warning(self, "Carrito Vacío", "Agrega productos para crear un presupuesto.")
@@ -389,7 +457,6 @@ class VistaVentas(QWidget):
                     'costo': costo_real, 'cantidad': d['cantidad'], 'stock_max': stock_maximo
                 }
             
-            # Al cargarlo al carrito, lo marcamos como facturado en BD para que no vuelva a aparecer
             db_sales.marcar_presupuesto_procesado(p_id)
             self.renderizar_carrito()
             dialog.accept()
@@ -701,7 +768,7 @@ class VistaVentas(QWidget):
             total_convertido = total_base * tasa
             self.lbl_total_pagar.setText(f"{self.moneda_actual['simbolo']} {total_convertido:.2f}")
 
-    # ================= MODAL DE PAGOS =================
+    # ================= 🔥 MODAL DE PAGOS CON OPCIÓN DE CRÉDITO 🔥 =================
     def abrir_modal_pago(self):
         if not self.carrito:
             return QMessageBox.warning(self, "Carrito Vacío", "Agrega productos para cobrar.")
@@ -791,10 +858,18 @@ class VistaVentas(QWidget):
         lbl_restante.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(lbl_restante)
 
-        btn_confirmar = QPushButton("✅ IMPRIMIR FACTURA (Enter)")
+        fila_botones_finales = QHBoxLayout()
+        
+        btn_credito = QPushButton("⏳ DAR A CRÉDITO")
+        btn_credito.setStyleSheet("QPushButton { background-color: #8B5CF6; color: white; border-radius: 6px; font-weight: bold; font-size: 16px; padding: 15px; } QPushButton:disabled { background-color: #94A3B8; }")
+        
+        btn_confirmar = QPushButton("✅ IMPRIMIR FACTURA")
         btn_confirmar.setEnabled(False)
-        btn_confirmar.setStyleSheet("QPushButton { background-color: #16A34A; color: white; border-radius: 6px; font-weight: bold; font-size: 18px; padding: 15px; } QPushButton:disabled { background-color: #94A3B8; }")
-        layout.addWidget(btn_confirmar)
+        btn_confirmar.setStyleSheet("QPushButton { background-color: #16A34A; color: white; border-radius: 6px; font-weight: bold; font-size: 16px; padding: 15px; } QPushButton:disabled { background-color: #94A3B8; }")
+        
+        fila_botones_finales.addWidget(btn_credito)
+        fila_botones_finales.addWidget(btn_confirmar)
+        layout.addLayout(fila_botones_finales)
 
         def sugerir_monto():
             pagado_base = sum((p['monto'] / p['tasa']) for p in pagos_ingresados)
@@ -842,12 +917,14 @@ class VistaVentas(QWidget):
                 lbl_restante.setText(f"VUELTO A ENTREGAR:\n{self.moneda_actual['simbolo']} {abs(resta_convertida):.2f}")
                 lbl_restante.setStyleSheet("font-size: 20px; font-weight: 900; color: #16A34A;")
                 btn_confirmar.setEnabled(True)
+                btn_credito.setEnabled(False) 
                 btn_confirmar.setFocus() 
                 txt_monto_pago.setText("0.00")
             else:
                 lbl_restante.setText(f"AÚN FALTA:\n{self.moneda_actual['simbolo']} {resta_convertida:.2f}")
                 lbl_restante.setStyleSheet("font-size: 20px; font-weight: 900; color: #DC2626;")
                 btn_confirmar.setEnabled(False)
+                btn_credito.setEnabled(True if self.cliente_actual['id'] != 1 else False) 
                 sugerir_monto()
                 txt_monto_pago.setFocus() 
 
@@ -875,7 +952,16 @@ class VistaVentas(QWidget):
             except ValueError:
                 QMessageBox.warning(dialog, "Error", "Monto inválido.")
 
-        def confirmar():
+        def confirmar(es_credito=False):
+            vencimiento = None
+            if es_credito:
+                if self.cliente_actual['id'] == 1: 
+                    return QMessageBox.warning(dialog, "Denegado", "No puedes darle crédito al 'Cliente General'. Selecciona un cliente registrado.")
+                
+                dias, ok = QInputDialog.getInt(dialog, "Días de Crédito", "¿Cuántos días tiene el cliente para pagar la deuda?", 15, 1, 365)
+                if not ok: return
+                vencimiento = (datetime.now() + timedelta(days=dias)).strftime('%Y-%m-%d %H:%M:%S')
+
             exito, resp = db_sales.procesar_venta_completa(
                 self.cliente_actual['id'], 
                 self.moneda_actual['id'], 
@@ -884,7 +970,9 @@ class VistaVentas(QWidget):
                 list(self.carrito.values()), 
                 pagos_ingresados, 
                 almacen_id,
-                self.sesion_caja_actual['id'] 
+                self.sesion_caja_actual['id'],
+                es_credito=es_credito, 
+                fecha_vencimiento=vencimiento
             )
             if exito:
                 self.generar_ticket(resp)
@@ -895,7 +983,8 @@ class VistaVentas(QWidget):
 
         combo_moneda_pago.currentIndexChanged.connect(actualizar_metodos)
         btn_agregar_pago.clicked.connect(agregar_pago)
-        btn_confirmar.clicked.connect(confirmar)
+        btn_confirmar.clicked.connect(lambda: confirmar(False))
+        btn_credito.clicked.connect(lambda: confirmar(True))
         
         txt_monto_pago.returnPressed.connect(agregar_pago)
 

@@ -15,6 +15,7 @@ from modules.returns.ui_returns import VistaDevoluciones
 from modules.reports.ui_reports import VistaReportes
 from modules.home.ui_home import VistaInicio
 from modules.users.ui_login import VistaLogin
+from modules.customers.ui_cxc import VistaCXC # 🔥 Nuevo módulo
 from utils import session
 
 class GestyERP(QMainWindow):
@@ -23,9 +24,9 @@ class GestyERP(QMainWindow):
         
         # --- CONFIGURACIÓN DE LA VENTANA ---
         self.setWindowTitle("Gesty ERP - Sistema de Gestión")
-        self.resize(1300, 850)
+        self.resize(1350, 850)
         
-        # Estilo Global (Tipografía moderna y fondo neutro)
+        # Estilo Global
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #F8FAFC; 
@@ -75,40 +76,33 @@ class GestyERP(QMainWindow):
         layout_sidebar.setContentsMargins(0, 30, 0, 30)
         layout_sidebar.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # Logo / Título
         lbl_logo = QLabel("Gesty ERP")
-        lbl_logo.setStyleSheet("""
-            font-size: 24px; 
-            font-weight: 900; 
-            color: #0F172A; 
-            padding-left: 20px; 
-            margin-bottom: 30px;
-            border: none;
-        """)
+        lbl_logo.setStyleSheet("font-size: 24px; font-weight: 900; color: #0F172A; padding-left: 20px; margin-bottom: 30px; border: none;")
         layout_sidebar.addWidget(lbl_logo)
 
         # Botones de navegación
         self.botones_menu = []
         nombres_menu = [
-            "🏠  Inicio",           # Índice 0
-            "🛒  Ventas",           # Índice 1
-            "📦  Inventario",       # Índice 2
-            "👥  Clientes",         # Índice 3
-            "🚚  Proveedores",      # Índice 4
-            "🔄  Devoluciones",     # Índice 5
-            "📊  Reportes",         # Índice 6
-            "⚙️  Ajustes"           # Índice 7
+            "🏠  Inicio",           # 0
+            "🛒  Ventas",           # 1
+            "📦  Inventario",       # 2
+            "👥  Clientes",         # 3
+            "🚚  Proveedores",      # 4
+            "🔄  Devoluciones",     # 5
+            "📊  Reportes",         # 6
+            "⚙️  Ajustes",          # 7
+            "💸  Cuentas por Cobrar"  # 8 <- NUEVO
         ]
         
-        # ================= 🔥 MAGIA DE SEGURIDAD VISUAL 🔥 =================
+        # ================= 🔥 SEGURIDAD VISUAL 🔥 =================
         rol_usuario = session.usuario_actual['rol_id']
         
-        if rol_usuario == 3: # CAJERO: Solo ve Inicio, Ventas y Clientes
+        if rol_usuario == 3: # CAJERO
             indices_permitidos = [0, 1, 3] 
-        elif rol_usuario == 2: # GERENTE: Ve todo excepto Reportes y Ajustes
-            indices_permitidos = [0, 1, 2, 3, 4, 5]
-        else: # ADMINISTRADOR: Ve absolutamente todo
-            indices_permitidos = [0, 1, 2, 3, 4, 5, 6, 7]
+        elif rol_usuario == 2: # GERENTE
+            indices_permitidos = [0, 1, 2, 3, 4, 5, 8]
+        else: # ADMINISTRADOR
+            indices_permitidos = [0, 1, 2, 3, 4, 5, 6, 7, 8]
         
         for index, nombre in enumerate(nombres_menu):
             btn = QPushButton(nombre)
@@ -118,48 +112,38 @@ class GestyERP(QMainWindow):
             self.botones_menu.append(btn)
             layout_sidebar.addWidget(btn)
             
-            # Ocultamos el botón si el usuario no tiene permisos
             if index not in indices_permitidos:
                 btn.hide()
 
         # --- ÁREA DE CONTENIDO (PANTALLAS) ---
         self.stacked_widget = QStackedWidget()
         
-        # El orden aquí debe coincidir exactamente con los índices de la lista nombres_menu
-        # 0. Inicio
-        self.stacked_widget.addWidget(VistaInicio())
-        # 1. Ventas
-        self.stacked_widget.addWidget(VistaVentas())
-        # 2. Inventario
-        self.stacked_widget.addWidget(VistaInventario())
-        # 3. Clientes
-        self.stacked_widget.addWidget(VistaClientes())
-        # 4. Proveedores
-        self.stacked_widget.addWidget(VistaProveedores())
-        # 5. Devoluciones
-        self.stacked_widget.addWidget(VistaDevoluciones())
-        # 6. Reportes
-        self.stacked_widget.addWidget(VistaReportes())
-        # 7. Ajustes
-        self.stacked_widget.addWidget(VistaAjustes())
+        # EL ORDEN AQUÍ ES CRÍTICO (Debe coincidir con los índices de arriba)
+        self.stacked_widget.addWidget(VistaInicio())       # 0
+        self.stacked_widget.addWidget(VistaVentas())       # 1
+        self.stacked_widget.addWidget(VistaInventario())   # 2
+        self.stacked_widget.addWidget(VistaClientes())     # 3
+        self.stacked_widget.addWidget(VistaProveedores())  # 4
+        self.stacked_widget.addWidget(VistaDevoluciones()) # 5
+        self.stacked_widget.addWidget(VistaReportes())     # 6
+        self.stacked_widget.addWidget(VistaAjustes())      # 7
+        self.stacked_widget.addWidget(VistaCXC())          # 8 <- NUEVO
         
         layout_principal.addWidget(self.sidebar)
         layout_principal.addWidget(self.stacked_widget)
 
-        # Iniciar en la pantalla de Inicio por defecto
         self.cambiar_pantalla(0)
 
     def cambiar_pantalla(self, indice):
-        """Cambia la vista y actualiza automáticamente los datos (Lógica Reactiva)"""
+        """Cambia la vista y actualiza automáticamente los datos"""
         self.stacked_widget.setCurrentIndex(indice)
         
-        # Marcar el botón correcto en el menú lateral
         for i, btn in enumerate(self.botones_menu):
             btn.setChecked(i == indice)
             
-        # Refrescar los datos de la vista que se acaba de abrir
         vista_actual = self.stacked_widget.widget(indice)
         
+        # Funciones de recarga automática según el módulo
         if hasattr(vista_actual, 'cargar_datos'):
             vista_actual.cargar_datos() 
             
@@ -170,28 +154,21 @@ class GestyERP(QMainWindow):
             vista_actual.actualizar_todo() 
 
 # ========================================================
-# PUNTO DE ARRANQUE DE LA APLICACIÓN
+# PUNTO DE ARRANQUE
 # ========================================================
 if __name__ == "__main__":
     from utils.Gesty_BD import inicializar_db
     
-    # 1. Aseguramos que la BD exista
     inicializar_db() 
     
     app = QApplication(sys.argv)
     
-    # 2. Mostramos el Login PRIMERO
     login = VistaLogin()
     
-    # 3. Si el login responde "accept()" (contraseña correcta), abrimos el programa
     if login.exec() == QDialog.DialogCode.Accepted:
-        
-        print(f"Bienvenido al sistema: {session.usuario_actual['nombre']} ({session.usuario_actual['rol_nombre']})")
-        
+        print(f"Sesión iniciada: {session.usuario_actual['nombre']}")
         ventana = GestyERP() 
         ventana.show()
         sys.exit(app.exec())
     else:
-        # Si cerraron la ventana de login en la "X", el programa se apaga
-        print("Login cancelado. Cerrando sistema.")
         sys.exit()

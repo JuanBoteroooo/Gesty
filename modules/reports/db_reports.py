@@ -61,19 +61,20 @@ def obtener_top_productos():
     return res
 
 def obtener_stock_critico():
-    """Productos que están por debajo de su stock mínimo"""
+    """Productos que están por debajo de su stock mínimo sumando todos los almacenes"""
     conn = connect()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT 
             p.codigo, 
             p.nombre, 
-            ia.cantidad as stock_actual, 
-            p.cantidad_minima
+            COALESCE(SUM(ia.cantidad), 0) as stock_actual,
+            p.stock_minimo as cantidad_minima
         FROM productos p
-        JOIN inventario_almacenes ia ON p.id = ia.producto_id
-        WHERE ia.cantidad <= p.cantidad_minima
-        ORDER BY ia.cantidad ASC
+        LEFT JOIN inventario_almacenes ia ON p.id = ia.producto_id
+        GROUP BY p.id
+        HAVING stock_actual <= p.stock_minimo
+        ORDER BY stock_actual ASC
     """)
     res = [dict(row) for row in cursor.fetchall()]
     conn.close()

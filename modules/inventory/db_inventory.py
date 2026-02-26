@@ -66,6 +66,19 @@ def guardar_producto(codigo, nombre, departamento_id, proveedor_id, costo, preci
         """, (codigo, nombre, departamento_id, proveedor_id, stock_min))
         producto_id = cursor.lastrowid
         
+        # 🔥 LÓGICA DE CÓDIGOS DE BARRA 🔥
+        codigo_final = codigo
+        if not codigo or str(codigo).strip() == "":
+            codigo_final = f"PRD-{producto_id:05d}"
+            cursor.execute("UPDATE productos SET codigo = ? WHERE id = ?", (codigo_final, producto_id))
+            
+        # Intentamos generar la imagen del código para imprimir
+        try:
+            from utils.barcode_gen import generar_e_imprimir_codigo
+            generar_e_imprimir_codigo(codigo_final, nombre)
+        except Exception as e:
+            print(f"Aviso: No se pudo generar la imagen del código de barras ({e})")
+        
         cursor.execute("INSERT INTO productos_proveedores (producto_id, proveedor_id, precio_costo) VALUES (?, ?, ?)", 
                        (producto_id, proveedor_id, costo))
         
@@ -91,7 +104,6 @@ def guardar_producto(codigo, nombre, departamento_id, proveedor_id, costo, preci
     finally:
         conn.close()
 
-# 🔥 FUNCIÓN MEJORADA: AHORA PERMITE ACTUALIZAR STOCK DESDE LA FICHA 🔥
 def editar_producto(producto_id, codigo, nombre, departamento_id, proveedor_id, costo, precios_dict, stock_dict, stock_min):
     conn = connect()
     cursor = conn.cursor()
@@ -113,7 +125,6 @@ def editar_producto(producto_id, codigo, nombre, departamento_id, proveedor_id, 
             cursor.execute("INSERT INTO precios_producto (producto_id, lista_precio_id, precio_venta) VALUES (?, ?, ?)", 
                            (producto_id, lista_id, precio))
             
-        # MAGIA: CALCULAMOS SI CAMBIASTE EL STOCK MANUALMENTE EN LA FICHA
         for almacen_id, nueva_cantidad in stock_dict.items():
             cursor.execute("SELECT cantidad FROM inventario_almacenes WHERE producto_id = ? AND almacen_id = ?", (producto_id, almacen_id))
             row = cursor.fetchone()
@@ -122,7 +133,7 @@ def editar_producto(producto_id, codigo, nombre, departamento_id, proveedor_id, 
                 stock_actual = row['cantidad']
                 diferencia = nueva_cantidad - stock_actual
                 
-                if diferencia != 0: # Si cambiaste el número...
+                if diferencia != 0: 
                     cursor.execute("UPDATE inventario_almacenes SET cantidad = ? WHERE producto_id = ? AND almacen_id = ?", (nueva_cantidad, producto_id, almacen_id))
                     
                     tipo_mov = 'AJUSTE_POSITIVO' if diferencia > 0 else 'AJUSTE_NEGATIVO'

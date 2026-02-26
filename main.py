@@ -16,6 +16,8 @@ from modules.reports.ui_reports import VistaReportes
 from modules.home.ui_home import VistaInicio
 from modules.users.ui_login import VistaLogin
 from modules.customers.ui_cxc import VistaCXC
+from modules.production.ui_production import VistaProduccion
+from modules.finance.ui_finance import VistaFinanzas  # <-- Nuevo módulo agregado
 from utils import session
 
 class GestyERP(QMainWindow):
@@ -95,7 +97,7 @@ class GestyERP(QMainWindow):
         # ESPACIADOR PARA SEPARAR EL LOGO DEL MENÚ
         layout_sidebar.addSpacing(20)
 
-        # MENÚ DE NAVEGACIÓN (Nombres más sobrios y sin emojis)
+        # MENÚ DE NAVEGACIÓN
         self.botones_menu = []
         nombres_menu = [
             "Inicio",                 # 0
@@ -105,8 +107,10 @@ class GestyERP(QMainWindow):
             "Compras a Proveedores",  # 4
             "Devoluciones",           # 5
             "Reportes y Métricas",    # 6
-            "Cuentas por Cobrar",      # 8
-            "Configuración del ERP"  # 7
+            "Cuentas por Cobrar",     # 7
+            "Producción y Combos",    # 8
+            "Control de Finanzas",    # 9  <-- Agregado
+            "Configuración del ERP"   # 10 <-- Índice desplazado
         ]
         
         # SEGURIDAD: LÓGICA DE PERMISOS
@@ -115,13 +119,13 @@ class GestyERP(QMainWindow):
         if rol_usuario == 3: # CAJERO
             indices_permitidos = [0, 1, 3] 
         elif rol_usuario == 2: # GERENTE
-            indices_permitidos = [0, 1, 2, 3, 4, 5, 8]
+            indices_permitidos = [0, 1, 2, 3, 4, 5, 7, 8, 9]
         else: # ADMINISTRADOR
-            indices_permitidos = [0, 1, 2, 3, 4, 5, 6, 8, 7]
+            indices_permitidos = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         
         for index, nombre in enumerate(nombres_menu):
             btn = QPushButton(nombre)
-            btn.setProperty("class", "menu-btn") # Aplicamos la clase CSS definida arriba
+            btn.setProperty("class", "menu-btn") 
             btn.setCheckable(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda checked, idx=index: self.cambiar_pantalla(idx))
@@ -158,7 +162,7 @@ class GestyERP(QMainWindow):
         self.stacked_widget = QStackedWidget()
         self.stacked_widget.setStyleSheet("background-color: transparent;")
         
-        # EL ORDEN AQUÍ ES CRÍTICO (Debe coincidir con los índices de arriba)
+        # EL ORDEN AQUÍ ES CRÍTICO (Debe coincidir con los índices del menú)
         self.stacked_widget.addWidget(VistaInicio())       # 0
         self.stacked_widget.addWidget(VistaVentas())       # 1
         self.stacked_widget.addWidget(VistaInventario())   # 2
@@ -166,8 +170,10 @@ class GestyERP(QMainWindow):
         self.stacked_widget.addWidget(VistaProveedores())  # 4
         self.stacked_widget.addWidget(VistaDevoluciones()) # 5
         self.stacked_widget.addWidget(VistaReportes())     # 6
-        self.stacked_widget.addWidget(VistaCXC())          # 8
-        self.stacked_widget.addWidget(VistaAjustes())      # 7
+        self.stacked_widget.addWidget(VistaCXC())          # 7
+        self.stacked_widget.addWidget(VistaProduccion())   # 8
+        self.stacked_widget.addWidget(VistaFinanzas())     # 9
+        self.stacked_widget.addWidget(VistaAjustes())      # 10
         
         layout_principal.addWidget(self.sidebar)
         layout_principal.addWidget(self.stacked_widget)
@@ -208,7 +214,7 @@ if __name__ == "__main__":
     
     if login.exec() == QDialog.DialogCode.Accepted:
         ventana = GestyERP() 
-        ventana.show()
+        ventana.showMaximized() # Solo se necesita esta instrucción para la pantalla completa útil
         sys.exit(app.exec())
     else:
         sys.exit()

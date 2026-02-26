@@ -2,7 +2,7 @@ import qtawesome as qta
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
                              QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QAbstractItemView, QDialog, 
-                             QFormLayout, QDoubleSpinBox, QComboBox, QMessageBox, QFrame, QTabWidget, QSpinBox, QInputDialog)
+                             QFormLayout, QDoubleSpinBox, QComboBox, QMessageBox, QFrame, QTabWidget, QSpinBox, QInputDialog, QAbstractSpinBox)
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QColor, QFont
 from modules.customers import db_cxc
@@ -103,7 +103,16 @@ class VistaCXC(QWidget):
         self.tabla_facturas = QTableWidget()
         self.tabla_facturas.setColumnCount(6)
         self.tabla_facturas.setHorizontalHeaderLabels(["N° VENTA", "CLIENTE", "FECHA EMISIÓN", "VENCIMIENTO", "MONTO ORIGINAL", "SALDO PENDIENTE"])
-        self.tabla_facturas.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        
+        # 🔥 AJUSTE PERFECTO DE COLUMNAS PARA QUE NO SE CORTEN 🔥
+        header = self.tabla_facturas.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        
         self.tabla_facturas.verticalHeader().setVisible(False)
         self.tabla_facturas.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla_facturas.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -143,28 +152,54 @@ class VistaCXC(QWidget):
 
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Abono a Factura #{self.factura_seleccionada['venta_id']:06d}")
-        dialog.setFixedWidth(350)
-        dialog.setStyleSheet("QDialog { background-color: #FFFFFF; } QDoubleSpinBox, QComboBox { padding: 8px; border: 1px solid #CBD5E1; }")
+        dialog.setFixedWidth(400)
+        dialog.setStyleSheet("QDialog { background-color: #FFFFFF; } QLabel { font-weight: bold; color: #334155; } QDoubleSpinBox, QComboBox { padding: 8px; border: 1px solid #CBD5E1; }")
         
         layout = QFormLayout(dialog)
         layout.addRow(QLabel(f"Deuda Actual: $ {self.factura_seleccionada['saldo_pendiente']:.2f}", styleSheet="color: #DC2626; font-weight: bold; font-size: 16px;"))
 
-        spin_monto = QDoubleSpinBox()
-        spin_monto.setRange(0.01, self.factura_seleccionada['saldo_pendiente'])
-        spin_monto.setValue(self.factura_seleccionada['saldo_pendiente'])
-        spin_monto.setPrefix("$ ")
-        layout.addRow("Monto a Pagar:", spin_monto)
-
         combo_metodo = QComboBox()
-        _, _, _, metodos, _ = db_sales.obtener_datos_configuracion()
-        for m in metodos: combo_metodo.addItem(m['nombre'], m['id'])
-        layout.addRow("Método:", combo_metodo)
+        _, monedas, _, metodos, _ = db_sales.obtener_datos_configuracion()
+        monedas_dict = {m['id']: m for m in monedas}
+        for m in metodos: combo_metodo.addItem(m['nombre'], m)
+
+        spin_monto = QDoubleSpinBox()
+        spin_monto.setMaximum(99999999.99)
+        spin_monto.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        
+        lbl_equivalente = QLabel("Equivalente: $ 0.00")
+        lbl_equivalente.setStyleSheet("color: #10B981; font-weight: bold;")
+
+        def actualizar_conversion():
+            metodo = combo_metodo.currentData()
+            if not metodo: return
+            moneda = monedas_dict[metodo['moneda_id']]
+            spin_monto.setPrefix(f"{moneda['simbolo']} ")
+            
+            equiv_usd = spin_monto.value() / float(moneda['tasa_cambio'])
+            lbl_equivalente.setText(f"Equivalente: $ {equiv_usd:.2f}")
+
+        combo_metodo.currentIndexChanged.connect(actualizar_conversion)
+        spin_monto.valueChanged.connect(actualizar_conversion)
+        actualizar_conversion()
+
+        layout.addRow("Método de Pago:", combo_metodo)
+        layout.addRow("Monto a Entregar:", spin_monto)
+        layout.addRow("", lbl_equivalente)
 
         btn_confirmar = QPushButton("Abonar")
         btn_confirmar.setStyleSheet("background-color: #10B981; color: white; padding: 10px; font-weight: bold; border-radius: 4px;")
         
         def confirmar():
-            exito, msg = db_cxc.registrar_abono_factura_especifica(self.factura_seleccionada['id'], spin_monto.value(), combo_metodo.currentData(), sesion['id'])
+            metodo = combo_metodo.currentData()
+            moneda = monedas_dict[metodo['moneda_id']]
+            monto_usd = spin_monto.value() / float(moneda['tasa_cambio'])
+
+            if monto_usd <= 0: return
+            if monto_usd > self.factura_seleccionada['saldo_pendiente'] + 0.01:
+                return self.mostrar_mensaje("Error", "El monto ingresado supera la deuda de la factura.", "error")
+
+            exito, msg = db_cxc.registrar_abono_factura_especifica(self.factura_seleccionada['id'], monto_usd, metodo['id'], sesion['id'])
             if exito:
                 self.mostrar_mensaje("Éxito", msg)
                 self.cargar_datos_refresh()
@@ -200,7 +235,14 @@ class VistaCXC(QWidget):
         self.tabla_infinita = QTableWidget()
         self.tabla_infinita.setColumnCount(4)
         self.tabla_infinita.setHorizontalHeaderLabels(["ID CUENTA", "CLIENTE (DUEÑO)", "FECHA APERTURA", "SALDO TOTAL ADEUDADO"])
-        self.tabla_infinita.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        
+        # 🔥 AJUSTE PERFECTO DE COLUMNAS PARA QUE NO SE CORTEN 🔥
+        h_inf = self.tabla_infinita.horizontalHeader()
+        h_inf.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        h_inf.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        h_inf.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        h_inf.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        
         self.tabla_infinita.verticalHeader().setVisible(False)
         self.tabla_infinita.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla_infinita.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -226,8 +268,17 @@ class VistaCXC(QWidget):
             self.tabla_infinita.setItem(i, 1, QTableWidgetItem(f"{c['cliente_nombre']} ({c['documento']})"))
             self.tabla_infinita.setItem(i, 2, QTableWidgetItem(c['fecha_hora']))
             
-            item_saldo = QTableWidgetItem(f"$ {c['saldo_pendiente']:.2f}")
-            item_saldo.setForeground(QColor("#DC2626"))
+            saldo = float(c['saldo_pendiente'])
+            if saldo > 0:
+                item_saldo = QTableWidgetItem(f"DEUDA: $ {saldo:.2f}")
+                item_saldo.setForeground(QColor("#DC2626"))
+            elif saldo < 0:
+                item_saldo = QTableWidgetItem(f"A FAVOR: $ {abs(saldo):.2f}")
+                item_saldo.setForeground(QColor("#10B981"))
+            else:
+                item_saldo = QTableWidgetItem(f"SOLVENTE: $ 0.00")
+                item_saldo.setForeground(QColor("#64748B"))
+                
             item_saldo.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
             self.tabla_infinita.setItem(i, 3, item_saldo)
 
@@ -275,7 +326,7 @@ class VistaCXC(QWidget):
         layout.addWidget(btn_crear)
         dialog.exec()
 
-    # ================= 🔥 MINI-POS: GESTIÓN DE CUENTA INFINITA (MEJORADO) 🔥 =================
+    # ================= 🔥 MINI-POS: GESTIÓN DE CUENTA INFINITA 🔥 =================
     def abrir_modal_gestion_infinita(self):
         if not self.cuenta_abierta_seleccionada: return self.mostrar_mensaje("Aviso", "Seleccione una cuenta de la tabla.", "error")
         cuenta = self.cuenta_abierta_seleccionada
@@ -284,50 +335,60 @@ class VistaCXC(QWidget):
 
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Mini POS (Cuaderno) - {cuenta['cliente_nombre']}")
-        # 🔥 MODAL MUCHO MÁS GRANDE PARA EVITAR CORTES 🔥
-        dialog.setFixedWidth(1250)
-        dialog.setMinimumHeight(700)
+        dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
+        dialog.showMaximized()
         dialog.setStyleSheet("QDialog { background-color: #F8FAFC; }")
         
         layout_principal = QVBoxLayout(dialog)
         layout_principal.setSpacing(20)
-        layout_principal.setContentsMargins(25, 25, 25, 25)
+        layout_principal.setContentsMargins(30, 30, 30, 30)
         
-        # CABECERA: Nombre y Saldo Total
         header = QHBoxLayout()
         lbl_nombre = QLabel(f"ESTADO DE CUENTA: {cuenta['cliente_nombre'].upper()}")
-        lbl_nombre.setStyleSheet("font-size: 22px; font-weight: 900; color: #0F172A;")
-        self.lbl_saldo_dinamico = QLabel(f"SALDO DEUDOR: $ {cuenta['saldo_pendiente']:.2f}")
-        self.lbl_saldo_dinamico.setStyleSheet("font-size: 24px; font-weight: 900; color: #DC2626; background: #FEE2E2; padding: 5px 20px; border-radius: 8px;")
+        lbl_nombre.setStyleSheet("font-size: 26px; font-weight: 900; color: #0F172A;")
+        
+        self.lbl_saldo_dinamico = QLabel()
+        
+        def actualizar_etiqueta_saldo(saldo):
+            if saldo > 0:
+                self.lbl_saldo_dinamico.setText(f"SALDO DEUDOR: $ {saldo:.2f}")
+                self.lbl_saldo_dinamico.setStyleSheet("font-size: 26px; font-weight: 900; color: #DC2626; background: #FEE2E2; padding: 10px 25px; border-radius: 8px;")
+            elif saldo < 0:
+                self.lbl_saldo_dinamico.setText(f"SALDO A FAVOR: $ {abs(saldo):.2f}")
+                self.lbl_saldo_dinamico.setStyleSheet("font-size: 26px; font-weight: 900; color: #10B981; background: #D1FAE5; padding: 10px 25px; border-radius: 8px;")
+            else:
+                self.lbl_saldo_dinamico.setText(f"CUENTA SOLVENTE: $ 0.00")
+                self.lbl_saldo_dinamico.setStyleSheet("font-size: 26px; font-weight: 900; color: #64748B; background: #F1F5F9; padding: 10px 25px; border-radius: 8px;")
+
+        actualizar_etiqueta_saldo(float(cuenta['saldo_pendiente']))
+
         header.addWidget(lbl_nombre)
         header.addStretch()
         header.addWidget(self.lbl_saldo_dinamico)
         layout_principal.addLayout(header)
 
-        # CUERPO DEL MINI POS
         cuerpo = QHBoxLayout()
         cuerpo.setSpacing(20)
         
-        # ---------------- PANEL IZQUIERDO: BUSCADOR DE PRODUCTOS ----------------
+        # ---------------- PANEL IZQUIERDO: BUSCADOR ----------------
         panel_izq = QFrame()
         panel_izq.setStyleSheet("QFrame { background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; }")
         layout_izq = QVBoxLayout(panel_izq)
-        layout_izq.setContentsMargins(15, 15, 15, 15)
+        layout_izq.setContentsMargins(20, 20, 20, 20)
         
         lbl_buscar = QLabel("🛒 BUSCAR Y AÑADIR PRODUCTO A LA DEUDA")
-        lbl_buscar.setStyleSheet("font-weight: 900; color: #0F172A; border: none;")
+        lbl_buscar.setStyleSheet("font-weight: 900; color: #0F172A; border: none; font-size: 14px;")
         layout_izq.addWidget(lbl_buscar)
 
-        # 🔥 AÑADIMOS SELECTORES DE ALMACÉN Y TARIFA 🔥
         fila_filtros = QHBoxLayout()
         _, _, listas, _, almacenes = db_sales.obtener_datos_configuracion()
 
         combo_almacen_mini = QComboBox()
-        combo_almacen_mini.setStyleSheet("padding: 8px; border: 1px solid #CBD5E1; border-radius: 4px; font-weight: bold; background-color: #F8FAFC;")
+        combo_almacen_mini.setStyleSheet("padding: 10px; border: 1px solid #CBD5E1; border-radius: 4px; font-weight: bold; background-color: #F8FAFC;")
         for a in almacenes: combo_almacen_mini.addItem(a['nombre'], a['id'])
 
         combo_tarifa_mini = QComboBox()
-        combo_tarifa_mini.setStyleSheet("padding: 8px; border: 1px solid #CBD5E1; border-radius: 4px; font-weight: bold; background-color: #F8FAFC;")
+        combo_tarifa_mini.setStyleSheet("padding: 10px; border: 1px solid #CBD5E1; border-radius: 4px; font-weight: bold; background-color: #F8FAFC;")
         for l in listas: combo_tarifa_mini.addItem(l['nombre'], l['id'])
 
         fila_filtros.addWidget(QLabel("Almacén:", styleSheet="font-weight: bold; color: #64748B; border: none;"))
@@ -340,14 +401,13 @@ class VistaCXC(QWidget):
         txt_buscar = QLineEdit()
         txt_buscar.setPlaceholderText("Escriba para buscar y presione Enter o Doble Clic...")
         txt_buscar.setFixedHeight(45)
-        txt_buscar.setStyleSheet("QLineEdit { padding: 5px 15px; border: 2px solid #E2E8F0; border-radius: 6px; font-size: 14px; color: #000; } QLineEdit:focus { border: 2px solid #3B82F6; }")
+        txt_buscar.setStyleSheet("QLineEdit { padding: 10px 15px; border: 2px solid #E2E8F0; border-radius: 6px; font-size: 15px; color: #000; } QLineEdit:focus { border: 2px solid #3B82F6; }")
         layout_izq.addWidget(txt_buscar)
 
         tabla_busq = QTableWidget()
         tabla_busq.setColumnCount(4)
         tabla_busq.setHorizontalHeaderLabels(["ID", "PRODUCTO", "PRECIO", "STOCK"])
         
-        # Ajuste perfecto de columnas
         h_busq = tabla_busq.horizontalHeader()
         h_busq.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         h_busq.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -358,7 +418,7 @@ class VistaCXC(QWidget):
         tabla_busq.verticalHeader().setVisible(False)
         tabla_busq.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         tabla_busq.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        tabla_busq.verticalHeader().setDefaultSectionSize(40)
+        tabla_busq.verticalHeader().setDefaultSectionSize(45)
         tabla_busq.setStyleSheet(self.get_tabla_style())
         layout_izq.addWidget(tabla_busq)
 
@@ -381,11 +441,13 @@ class VistaCXC(QWidget):
                 tabla_busq.setItem(i, 0, item_id)
                 
                 item_nom = QTableWidgetItem(p['nombre'])
-                item_nom.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+                item_nom.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+                item_nom.setToolTip(p['nombre'])
                 tabla_busq.setItem(i, 1, item_nom)
                 
                 item_prec = QTableWidgetItem(f"${p['precio']:.2f}")
                 item_prec.setForeground(QColor("#10B981"))
+                item_prec.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
                 tabla_busq.setItem(i, 2, item_prec)
                 
                 item_stock = QTableWidgetItem(str(p['stock']))
@@ -404,13 +466,13 @@ class VistaCXC(QWidget):
             
             almacen_id = combo_almacen_mini.currentData() or 1
             
-            cant, ok = QInputDialog.getInt(dialog, "Cantidad a Entregar", f"¿Cuántas unidades de {p['nombre']} se lleva?", 1, 1, p['stock'])
+            cant, ok = QInputDialog.getInt(dialog, "Cantidad a Entregar", f"¿Cuántas unidades de {p['nombre']} se lleva?", 1, 1, int(p['stock']))
             if ok:
                 exito, msg = db_cxc.agregar_producto_cuenta(cuenta['cxc_id'], cuenta['venta_id'], p['id'], almacen_id, cant, p['precio'], session.usuario_actual['id'])
                 if exito:
                     txt_buscar.clear()
                     recargar_tabla_y_saldo()
-                    buscar_mini() # Actualizar stock visible
+                    buscar_mini() 
                 else: self.mostrar_mensaje("Error", msg, "error")
 
         tabla_busq.itemDoubleClicked.connect(agregar_prod)
@@ -420,17 +482,16 @@ class VistaCXC(QWidget):
         panel_der = QFrame()
         panel_der.setStyleSheet("QFrame { background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; }")
         layout_der = QVBoxLayout(panel_der)
-        layout_der.setContentsMargins(15, 15, 15, 15)
+        layout_der.setContentsMargins(20, 20, 20, 20)
 
         lbl_historial = QLabel("📖 DETALLE DE LA CUENTA (Comprobante)")
-        lbl_historial.setStyleSheet("font-weight: 900; color: #0F172A; border: none;")
+        lbl_historial.setStyleSheet("font-weight: 900; color: #0F172A; border: none; font-size: 14px;")
         layout_der.addWidget(lbl_historial)
 
         self.tabla_infinita_detalle = QTableWidget()
         self.tabla_infinita_detalle.setColumnCount(7)
         self.tabla_infinita_detalle.setHorizontalHeaderLabels(["FECHA", "TIPO", "DESCRIPCIÓN", "CANT.", "PRECIO", "SUBTOTAL", "ACCIÓN"])
         
-        # Ajuste perfecto de columnas para evitar recortes
         h_inf = self.tabla_infinita_detalle.horizontalHeader()
         h_inf.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         h_inf.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -439,7 +500,7 @@ class VistaCXC(QWidget):
         h_inf.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         h_inf.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         h_inf.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
-        self.tabla_infinita_detalle.setColumnWidth(6, 110) # Espacio suficiente para "Devolver"
+        self.tabla_infinita_detalle.setColumnWidth(6, 110) 
         h_inf.setStretchLastSection(False)
         
         self.tabla_infinita_detalle.verticalHeader().setVisible(False)
@@ -463,24 +524,27 @@ class VistaCXC(QWidget):
                 else: item_tipo.setForeground(QColor("#10B981"))
                 self.tabla_infinita_detalle.setItem(i, 1, item_tipo)
                 
-                self.tabla_infinita_detalle.setItem(i, 2, QTableWidgetItem(d['descripcion']))
+                item_desc = QTableWidgetItem(d['descripcion'])
+                item_desc.setToolTip(d['descripcion'])
+                self.tabla_infinita_detalle.setItem(i, 2, item_desc)
+                
                 self.tabla_infinita_detalle.setItem(i, 3, QTableWidgetItem(str(d['cantidad']) if d['tipo'] == 'PRODUCTO' else "-"))
                 self.tabla_infinita_detalle.setItem(i, 4, QTableWidgetItem(f"$ {d['precio']:.2f}"))
                 
                 if d['tipo'] == 'PRODUCTO':
                     item_monto = QTableWidgetItem(f"+ $ {d['subtotal']:.2f}")
                     item_monto.setForeground(QColor("#DC2626"))
-                    item_monto.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+                    item_monto.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
                     saldo_acumulado += d['subtotal']
                 else:
                     item_monto = QTableWidgetItem(f"- $ {d['subtotal']:.2f}")
                     item_monto.setForeground(QColor("#10B981"))
-                    item_monto.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+                    item_monto.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
                     saldo_acumulado -= d['subtotal']
                     
                 self.tabla_infinita_detalle.setItem(i, 5, item_monto)
                 
-                # Botón "Devolver" solo si es producto
+                # 🔥 BOTONES DE ACCIÓN: DEVOLVER PRODUCTO o ANULAR ABONO 🔥
                 if d['tipo'] == 'PRODUCTO':
                     btn_rev = QPushButton(" Devolver")
                     btn_rev.setIcon(qta.icon('fa5s.undo', color='white'))
@@ -494,53 +558,101 @@ class VistaCXC(QWidget):
                     l_btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     l_btn.addWidget(btn_rev)
                     self.tabla_infinita_detalle.setCellWidget(i, 6, widget_btn)
+                else:
+                    # ES UN ABONO: Botón para anularlo y sumarlo a la deuda
+                    btn_del = QPushButton(" Anular")
+                    btn_del.setIcon(qta.icon('fa5s.trash-alt', color='white'))
+                    btn_del.setStyleSheet("background-color: #DC2626; color: white; border-radius: 4px; padding: 6px; font-weight: bold; font-size: 11px;")
+                    btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+                    btn_del.clicked.connect(lambda checked, abono_id=d['item_id']: procesar_anular_abono(abono_id))
                     
-            if saldo_acumulado < 0: saldo_acumulado = 0
-            self.lbl_saldo_dinamico.setText(f"SALDO DEUDOR: $ {saldo_acumulado:.2f}")
+                    widget_btn = QWidget()
+                    l_btn = QHBoxLayout(widget_btn)
+                    l_btn.setContentsMargins(4, 4, 4, 4)
+                    l_btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    l_btn.addWidget(btn_del)
+                    self.tabla_infinita_detalle.setCellWidget(i, 6, widget_btn)
+                    
+            actualizar_etiqueta_saldo(saldo_acumulado)
             self.cargar_datos_refresh() 
 
         def procesar_devolucion_parcial(detalle_id, max_cant):
-            cant_dev, ok = QInputDialog.getInt(dialog, "Devolución Parcial", f"¿Cuántas unidades desea devolver al inventario? (Máx: {max_cant})", 1, 1, max_cant)
+            cant_dev, ok = QInputDialog.getInt(dialog, "Devolución Parcial", f"¿Cuántas unidades desea devolver al inventario? (Máx: {max_cant})", 1, 1, int(max_cant))
             if ok:
                 exito, msg = db_cxc.devolver_producto_cuenta(detalle_id, cuenta['cxc_id'], cuenta['venta_id'], cant_dev, session.usuario_actual['id'])
                 if exito: 
                     recargar_tabla_y_saldo()
-                    buscar_mini() # Actualiza stock visual
+                    buscar_mini() 
                 else: 
+                    self.mostrar_mensaje("Error", msg, "error")
+                    
+        def procesar_anular_abono(abono_id):
+            if self.mostrar_confirmacion("Anular Abono", "¿Está seguro de eliminar este pago? El saldo deudor del cliente aumentará."):
+                exito, msg = db_cxc.eliminar_abono_cuaderno(abono_id, cuenta['cxc_id'])
+                if exito:
+                    recargar_tabla_y_saldo()
+                else:
                     self.mostrar_mensaje("Error", msg, "error")
 
         cuerpo.addWidget(panel_izq, stretch=45)
         cuerpo.addWidget(panel_der, stretch=55)
         layout_principal.addLayout(cuerpo)
 
-        # ---------------- BARRA INFERIOR: ABONAR DINERO ----------------
+        # ---------------- BARRA INFERIOR: ABONAR DINERO CON CONVERSIÓN ----------------
         panel_pay = QFrame()
         panel_pay.setStyleSheet("background-color: #FFFFFF; border: 2px solid #10B981; border-radius: 8px;")
         layout_pay = QHBoxLayout(panel_pay)
         layout_pay.setContentsMargins(20, 15, 20, 15)
         
-        layout_pay.addWidget(QLabel("💵 RECIBIR ABONO DE DINERO:", styleSheet="font-weight: 900; color: #10B981; font-size: 16px; border: none;"))
-        
-        spin_abono = QDoubleSpinBox()
-        spin_abono.setPrefix("$ ")
-        spin_abono.setMaximum(99999)
-        spin_abono.setStyleSheet("padding: 10px; font-weight: bold; font-size: 16px; border: 1px solid #CBD5E1; border-radius: 4px; color: #10B981; background-color: #F8FAFC;")
-        spin_abono.setMinimumWidth(150)
+        layout_pay.addWidget(QLabel("💵 RECIBIR ABONO AL CUADERNO:", styleSheet="font-weight: 900; color: #10B981; font-size: 16px; border: none;"))
         
         combo_mp = QComboBox()
-        combo_mp.setStyleSheet("padding: 10px; border: 1px solid #CBD5E1; border-radius: 4px; font-weight: bold; font-size: 14px; background-color: #F8FAFC;")
-        combo_mp.setMinimumWidth(200)
-        _, _, _, metodos, _ = db_sales.obtener_datos_configuracion()
-        for m in metodos: combo_mp.addItem(m['nombre'], m['id'])
+        combo_mp.setStyleSheet("padding: 12px; border: 1px solid #CBD5E1; border-radius: 4px; font-weight: bold; font-size: 15px; background-color: #F8FAFC;")
+        combo_mp.setMinimumWidth(250)
         
-        btn_pay = QPushButton(" Procesar Abono al Cuaderno")
+        _, monedas, _, metodos, _ = db_sales.obtener_datos_configuracion()
+        monedas_dict = {m['id']: m for m in monedas}
+        
+        for m in metodos: 
+            combo_mp.addItem(m['nombre'], m)
+
+        spin_abono = QDoubleSpinBox()
+        spin_abono.setMaximum(99999999.99)
+        spin_abono.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        spin_abono.setStyleSheet("padding: 12px; font-weight: bold; font-size: 18px; border: 1px solid #CBD5E1; border-radius: 4px; color: #10B981; background-color: #F8FAFC;")
+        spin_abono.setMinimumWidth(180)
+        
+        lbl_equivalente = QLabel("Equivale a: $ 0.00")
+        lbl_equivalente.setStyleSheet("font-size: 15px; font-weight: bold; color: #64748B; border: none; margin-left: 10px;")
+        
+        def actualizar_conversion():
+            metodo = combo_mp.currentData()
+            if not metodo: return
+            moneda = monedas_dict[metodo['moneda_id']]
+            
+            spin_abono.setPrefix(f"{moneda['simbolo']} ")
+            monto_ingresado = spin_abono.value()
+            equiv_usd = monto_ingresado / float(moneda['tasa_cambio'])
+            
+            lbl_equivalente.setText(f"Equivale a: $ {equiv_usd:.2f}")
+
+        combo_mp.currentIndexChanged.connect(actualizar_conversion)
+        spin_abono.valueChanged.connect(actualizar_conversion)
+        actualizar_conversion()
+        
+        btn_pay = QPushButton(" Procesar Abono")
         btn_pay.setIcon(qta.icon('fa5s.check', color='white'))
-        btn_pay.setStyleSheet("background-color: #10B981; color: white; font-weight: bold; font-size: 15px; border-radius: 6px; padding: 12px 30px;")
+        btn_pay.setStyleSheet("background-color: #10B981; color: white; font-weight: bold; font-size: 15px; border-radius: 6px; padding: 12px 40px; margin-left: 20px;")
         btn_pay.setCursor(Qt.CursorShape.PointingHandCursor)
         
         def procesar_pay():
             if spin_abono.value() <= 0: return
-            exito, msg = db_cxc.registrar_abono_cuaderno(cuenta['cxc_id'], spin_abono.value(), combo_mp.currentData(), sesion['id'])
+            
+            metodo = combo_mp.currentData()
+            moneda = monedas_dict[metodo['moneda_id']]
+            monto_usd = spin_abono.value() / float(moneda['tasa_cambio'])
+            
+            exito, msg = db_cxc.registrar_abono_cuaderno(cuenta['cxc_id'], monto_usd, metodo['id'], sesion['id'])
             if exito:
                 spin_abono.setValue(0)
                 recargar_tabla_y_saldo()
@@ -549,8 +661,9 @@ class VistaCXC(QWidget):
         btn_pay.clicked.connect(procesar_pay)
         
         layout_pay.addStretch()
-        layout_pay.addWidget(spin_abono)
         layout_pay.addWidget(combo_mp)
+        layout_pay.addWidget(spin_abono)
+        layout_pay.addWidget(lbl_equivalente)
         layout_pay.addWidget(btn_pay)
         
         layout_principal.addWidget(panel_pay)

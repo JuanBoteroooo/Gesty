@@ -33,7 +33,6 @@ def registrar_abono_factura_especifica(cxc_id, monto, metodo_pago_id, sesion_caj
         
         cursor.execute("UPDATE cuentas_por_cobrar SET saldo_pendiente = ?, estado = ? WHERE id = ?", (nuevo_saldo, estado_nuevo, cxc_id))
         
-        # Eliminada la actualización a sesiones_caja que causaba el error
         conn.commit()
         return True, "Abono aplicado correctamente a la factura."
     except Exception as e:
@@ -78,7 +77,7 @@ def crear_cuenta_infinita(cliente_id, moneda_id, sesion_caja_id):
         # Crear la CxC atada a esa venta en modo INFINITO
         cursor.execute("INSERT INTO cuentas_por_cobrar (venta_id, cliente_id, monto_total, saldo_pendiente, estado) VALUES (?, ?, 0, 0, 'CUENTA_ABIERTA')", (venta_id, cliente_id))
         conn.commit()
-        return True, "Cuenta Abierta (Cuaderno) iniciada con éxito."
+        return True, "Cuenta Abierta iniciada con éxito."
     except Exception as e:
         conn.rollback()
         return False, str(e)
@@ -147,20 +146,16 @@ def devolver_producto_cuenta(detalle_id, cxc_id, venta_id, cantidad_a_devolver, 
             
         subtotal_devuelto = float(cantidad_a_devolver) * float(det['precio_unitario'])
         
-        # 1. Devolver inventario
         cursor.execute("UPDATE inventario_almacenes SET cantidad = cantidad + ? WHERE producto_id = ? AND almacen_id = ?", (cantidad_a_devolver, det['producto_id'], det['almacen_origen_id']))
         
-        # 2. Modificar o eliminar la línea de la factura
         if cantidad_a_devolver == cantidad_original:
             cursor.execute("DELETE FROM detalles_venta WHERE id = ?", (detalle_id,))
         else:
             cursor.execute("UPDATE detalles_venta SET cantidad = cantidad - ? WHERE id = ?", (cantidad_a_devolver, detalle_id))
         
-        # 3. Rebajar la deuda
         cursor.execute("UPDATE ventas SET total_venta = total_venta - ? WHERE id = ?", (subtotal_devuelto, venta_id))
         cursor.execute("UPDATE cuentas_por_cobrar SET monto_total = monto_total - ?, saldo_pendiente = saldo_pendiente - ? WHERE id = ?", (subtotal_devuelto, subtotal_devuelto, cxc_id))
         
-        # 4. KARDEX
         cursor.execute("INSERT INTO movimientos_inventario (producto_id, almacen_destino_id, tipo_movimiento, cantidad, motivo, usuario_id) VALUES (?, ?, 'ENTRADA', ?, 'Devolución de Cuaderno', ?)", (det['producto_id'], det['almacen_origen_id'], cantidad_a_devolver, usuario_id))
         
         conn.commit()
@@ -177,10 +172,33 @@ def registrar_abono_cuaderno(cxc_id, monto, metodo_pago_id, sesion_caja_id):
     try:
         cursor.execute("INSERT INTO abonos_cxc (cxc_id, monto, metodo_pago_id, sesion_caja_id) VALUES (?, ?, ?, ?)", (cxc_id, monto, metodo_pago_id, sesion_caja_id))
         cursor.execute("UPDATE cuentas_por_cobrar SET saldo_pendiente = saldo_pendiente - ? WHERE id = ?", (monto, cxc_id))
-        
-        # Eliminada la actualización a sesiones_caja
         conn.commit()
         return True, "Abono ingresado a la cuenta."
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        conn.close()
+
+# 🔥 NUEVA FUNCIÓN: ELIMINAR ABONO 🔥
+def eliminar_abono_cuaderno(abono_id, cxc_id):
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT monto FROM abonos_cxc WHERE id = ?", (abono_id,))
+        abono = cursor.fetchone()
+        if not abono: return False, "El abono no existe."
+        
+        monto_devuelto = float(abono['monto'])
+        
+        # Eliminar el pago
+        cursor.execute("DELETE FROM abonos_cxc WHERE id = ?", (abono_id,))
+        
+        # Volver a sumar la deuda al cliente
+        cursor.execute("UPDATE cuentas_por_cobrar SET saldo_pendiente = saldo_pendiente + ? WHERE id = ?", (monto_devuelto, cxc_id))
+        
+        conn.commit()
+        return True, "Abono anulado. El saldo deudor del cliente ha aumentado."
     except Exception as e:
         conn.rollback()
         return False, str(e)

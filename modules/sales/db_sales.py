@@ -91,23 +91,28 @@ def obtener_datos_configuracion():
     conn.close()
     return clientes, monedas, listas, metodos_pago, almacenes
 
+# 🔥 FUNCIÓN MEJORADA: LECTURA DE CÓDIGO DE BARRAS EXACTA O BÚSQUEDA NORMAL 🔥
 def buscar_productos(termino, lista_precio_id, almacen_id):
     conn = connect()
     cursor = conn.cursor()
-    termino = f"%{termino.lower()}%"
+    
+    # Preparamos los parámetros (Búsqueda exacta para la pistola o Parcial para el teclado)
+    param_exacto = termino.strip()
+    param_like = f"%{termino.lower()}%"
+    
     cursor.execute("""
         SELECT p.id, p.codigo, p.nombre, COALESCE(ia.cantidad, 0) as stock, COALESCE(pp.precio_venta, 0) as precio,
         COALESCE((SELECT precio_costo FROM productos_proveedores WHERE producto_id = p.id ORDER BY fecha_actualizacion DESC LIMIT 1), 0) as costo
         FROM productos p
         LEFT JOIN inventario_almacenes ia ON p.id = ia.producto_id AND ia.almacen_id = ?
         LEFT JOIN precios_producto pp ON p.id = pp.producto_id AND pp.lista_precio_id = ?
-        WHERE LOWER(p.nombre) LIKE ? OR LOWER(p.codigo) LIKE ? LIMIT 20
-    """, (almacen_id, lista_precio_id, termino, termino))
+        WHERE LOWER(p.nombre) LIKE ? OR p.codigo = ? LIMIT 20
+    """, (almacen_id, lista_precio_id, param_like, param_exacto))
+    
     res = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return res
 
-# 🔥 FUNCIÓN REPARADA: Ya recibe es_credito y fecha_vencimiento
 def procesar_venta_completa(cliente_id, moneda_id, tasa_cambio, total_base, carrito, pagos, almacen_id, sesion_id, es_credito=False, fecha_vencimiento=None):
     conn = connect()
     cursor = conn.cursor()
@@ -130,7 +135,6 @@ def procesar_venta_completa(cliente_id, moneda_id, tasa_cambio, total_base, carr
                                (venta_id, pago['metodo_id'], pago['monto'], pago['tasa']))
                 pagado_base += (pago['monto'] / pago['tasa'])
         
-        # SI ES A CRÉDITO, CALCULAMOS LA DEUDA
         if es_credito:
             saldo = total_base - pagado_base
             cursor.execute("INSERT INTO cuentas_por_cobrar (venta_id, cliente_id, monto_total, saldo_pendiente, estado, fecha_vencimiento) VALUES (?, ?, ?, ?, 'PENDIENTE', ?)", 

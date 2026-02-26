@@ -1,3 +1,4 @@
+import qtawesome as qta
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QDialog, QFormLayout, QMessageBox, QFrame, 
@@ -164,7 +165,6 @@ class VistaInventario(QWidget):
         
         layout_principal.addWidget(tarjeta)
 
-    # 🔥 MENSAJES DE ALERTA AHORA FORZADOS A COLOR BLANCO 🔥
     def mostrar_mensaje(self, titulo, texto, tipo="info"):
         msg = QMessageBox(self)
         msg.setWindowTitle(titulo)
@@ -205,7 +205,6 @@ class VistaInventario(QWidget):
             
             self.tabla.insertRow(fila_idx)
             
-            # Formato de ID limpio (Ej: 00012)
             item_id = QTableWidgetItem(f"{p['id']:05d}")
             item_id.setForeground(QColor("#94A3B8"))
             item_id.setData(Qt.ItemDataRole.UserRole, p) 
@@ -450,13 +449,49 @@ class VistaInventario(QWidget):
         tabs.addTab(tab_stock, "Existencias")
         layout_principal.addWidget(tabs)
 
-        # TAB GENERAL
+        # ==========================================
+        # TAB GENERAL CON BOTÓN DE CÓDIGO DE BARRAS
+        # ==========================================
         form_general = QFormLayout(tab_general)
         form_general.setVerticalSpacing(15)
         form_general.setContentsMargins(20, 20, 20, 20)
         
         campo_codigo = QLineEdit()
+        campo_codigo.setPlaceholderText("Ej: 75912345 (Deje en blanco para auto-generar)")
+        
+        # 🔥 BOTÓN DE IMPRESIÓN DE ETIQUETA 🔥
+        btn_imprimir_codigo = QPushButton(" Ver Etiqueta")
+        btn_imprimir_codigo.setIcon(qta.icon('fa5s.barcode', color='#0F172A'))
+        btn_imprimir_codigo.setStyleSheet("""
+            QPushButton { padding: 10px 15px; background-color: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 6px; font-weight: bold; color: #0F172A;}
+            QPushButton:hover { background-color: #E2E8F0; }
+        """)
+        btn_imprimir_codigo.setCursor(Qt.CursorShape.PointingHandCursor)
+        
         campo_nombre = QLineEdit()
+        
+        def imprimir_codigo():
+            cod = campo_codigo.text().strip()
+            nom = campo_nombre.text().strip() or "Producto"
+            
+            if not cod:
+                self.mostrar_mensaje("Aviso", "Primero escriba un código o Guarde el producto para que el sistema le genere uno automáticamente antes de imprimir.", "error")
+                return
+                
+            try:
+                import os
+                from utils.barcode_gen import generar_e_imprimir_codigo
+                ruta = generar_e_imprimir_codigo(cod, nom)
+                os.startfile(os.path.abspath(ruta))
+            except Exception as e:
+                self.mostrar_mensaje("Error", f"No se pudo generar o abrir la etiqueta:\n{str(e)}", "error")
+
+        btn_imprimir_codigo.clicked.connect(imprimir_codigo)
+
+        fila_codigo = QHBoxLayout()
+        fila_codigo.addWidget(campo_codigo, stretch=1)
+        fila_codigo.addWidget(btn_imprimir_codigo)
+        
         combo_categoria = QComboBox() 
         combo_proveedor = QComboBox() 
         campo_stock_min = QSpinBox()
@@ -465,7 +500,7 @@ class VistaInventario(QWidget):
         for d in departamentos: combo_categoria.addItem(d['nombre'], d['id'])
         for prov in proveedores: combo_proveedor.addItem(prov['nombre'], prov['id'])
             
-        form_general.addRow("Código Referencia:", campo_codigo)
+        form_general.addRow("Código / Barras:", fila_codigo)
         form_general.addRow("Descripción Comercial:", campo_nombre)
         form_general.addRow("Departamento:", combo_categoria)
         form_general.addRow("Proveedor de Origen:", combo_proveedor)
@@ -567,7 +602,7 @@ class VistaInventario(QWidget):
             costo = self.caja_costo_base.value() 
             stock_min = campo_stock_min.value()
             
-            if not codigo or not nombre: return self.mostrar_mensaje("Error", "Los campos Código y Descripción son obligatorios.", "error")
+            if not nombre: return self.mostrar_mensaje("Error", "La Descripción Comercial es obligatoria.", "error")
             
             precios_a_guardar = {l_id: spin.value() for l_id, spin in self.campos_precios_dict.items()}
             stock_a_guardar = {a_id: spin.value() for a_id, spin in self.campos_stock_dict.items()}
@@ -587,7 +622,6 @@ class VistaInventario(QWidget):
         layout_principal.addLayout(box_botones)
         dialog.exec()
 
-    # 🔥 ALERTA DE ELIMINAR AHORA TIENE FONDO BLANCO Y DISEÑO CORPORATIVO 🔥
     def eliminar(self):
         if not self.producto_seleccionado: return self.mostrar_mensaje("Aviso", "Seleccione un producto en la tabla.")
         

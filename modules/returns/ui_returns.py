@@ -1,9 +1,11 @@
+import qtawesome as qta
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, 
-                             QHeaderView, QMessageBox, QFrame, QAbstractItemView)
-from PyQt6.QtCore import Qt
+                             QHeaderView, QMessageBox, QFrame, QAbstractItemView, QInputDialog)
+from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QColor, QFont
 from modules.returns import db_returns
+from utils import session
 
 class VistaDevoluciones(QWidget):
     def __init__(self):
@@ -14,7 +16,7 @@ class VistaDevoluciones(QWidget):
 
     def setup_ui(self):
         layout_principal = QVBoxLayout(self)
-        layout_principal.setContentsMargins(40, 40, 40, 40)
+        layout_principal.setContentsMargins(30, 30, 30, 30)
         layout_principal.setSpacing(25)
         
         # ==========================================
@@ -26,7 +28,7 @@ class VistaDevoluciones(QWidget):
         lbl_titulo = QLabel("DEVOLUCIONES Y ANULACIONES")
         lbl_titulo.setStyleSheet("font-size: 24px; font-weight: 900; color: #0F172A; letter-spacing: 1px;")
         
-        lbl_subtitulo = QLabel("Búsqueda de facturas para anulación total y retorno automático de productos al stock.")
+        lbl_subtitulo = QLabel("Busque una factura para anularla por completo o devolver productos específicos al inventario.")
         lbl_subtitulo.setStyleSheet("font-size: 14px; color: #64748B;")
         
         header_layout.addWidget(lbl_titulo)
@@ -37,13 +39,7 @@ class VistaDevoluciones(QWidget):
         # TARJETA PRINCIPAL (CONTENEDOR)
         # ==========================================
         tarjeta = QFrame()
-        tarjeta.setStyleSheet("""
-            QFrame { 
-                background-color: #FFFFFF; 
-                border-radius: 8px; 
-                border: 1px solid #E2E8F0; 
-            }
-        """)
+        tarjeta.setStyleSheet("QFrame { background-color: #FFFFFF; border-radius: 8px; border: 1px solid #E2E8F0; }")
         layout_tarjeta = QVBoxLayout(tarjeta)
         layout_tarjeta.setContentsMargins(25, 25, 25, 25)
         layout_tarjeta.setSpacing(20)
@@ -53,18 +49,8 @@ class VistaDevoluciones(QWidget):
         self.txt_buscador.setPlaceholderText("Buscar por N° de Factura, Razón Social o Documento del cliente...")
         self.txt_buscador.setFixedHeight(45)
         self.txt_buscador.setStyleSheet("""
-            QLineEdit {
-                padding: 5px 15px; 
-                border: 1px solid #CBD5E1; 
-                border-radius: 6px; 
-                font-size: 14px; 
-                color: #0F172A; 
-                background-color: #F8FAFC;
-            }
-            QLineEdit:focus {
-                border: 2px solid #38BDF8;
-                background-color: #FFFFFF;
-            }
+            QLineEdit { padding: 5px 15px; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 14px; color: #0F172A; background-color: #F8FAFC; }
+            QLineEdit:focus { border: 2px solid #38BDF8; background-color: #FFFFFF; }
         """)
         self.txt_buscador.textChanged.connect(self.cargar_facturas)
         layout_tarjeta.addWidget(self.txt_buscador)
@@ -78,7 +64,6 @@ class VistaDevoluciones(QWidget):
         self.tabla_facturas.setColumnCount(5)
         self.tabla_facturas.setHorizontalHeaderLabels(["N° FACTURA", "FECHA Y HORA", "CLIENTE", "DOCUMENTO", "TOTAL PAGADO"])
         
-        # Configuración de anchos perfectos
         header_facturas = self.tabla_facturas.horizontalHeader()
         header_facturas.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header_facturas.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -102,14 +87,14 @@ class VistaDevoluciones(QWidget):
         self.tabla_facturas.itemSelectionChanged.connect(self.seleccionar_factura)
         layout_tarjeta.addWidget(self.tabla_facturas)
         
-        # --- TABLA SECUNDARIA: DETALLES ---
+        # --- TABLA SECUNDARIA: DETALLES (CON BOTÓN DE DEVOLVER) ---
         lbl_detalles = QLabel("PRODUCTOS CONTENIDOS EN LA FACTURA SELECCIONADA")
         lbl_detalles.setStyleSheet("font-size: 12px; font-weight: bold; color: #64748B; margin-top: 10px;")
         layout_tarjeta.addWidget(lbl_detalles)
         
         self.tabla_detalles = QTableWidget()
-        self.tabla_detalles.setColumnCount(5)
-        self.tabla_detalles.setHorizontalHeaderLabels(["CÓDIGO", "DESCRIPCIÓN DE PRODUCTO", "CANTIDAD", "PRECIO UNIT.", "SUBTOTAL"])
+        self.tabla_detalles.setColumnCount(6)
+        self.tabla_detalles.setHorizontalHeaderLabels(["CÓDIGO", "DESCRIPCIÓN DE PRODUCTO", "CANT.", "PRECIO", "SUBTOTAL", "ACCIÓN"])
         
         header_detalles = self.tabla_detalles.horizontalHeader()
         header_detalles.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
@@ -117,47 +102,37 @@ class VistaDevoluciones(QWidget):
         header_detalles.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header_detalles.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header_detalles.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header_detalles.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed) 
+        self.tabla_detalles.setColumnWidth(5, 110)
         header_detalles.setStretchLastSection(False)
         
         self.tabla_detalles.verticalHeader().setVisible(False)
         self.tabla_detalles.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla_detalles.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.tabla_detalles.verticalHeader().setDefaultSectionSize(40)
-        self.tabla_detalles.setFixedHeight(180)
+        self.tabla_detalles.verticalHeader().setDefaultSectionSize(45)
+        self.tabla_detalles.setFixedHeight(220)
         
         self.tabla_detalles.setStyleSheet("""
-            QTableWidget { background-color: #F8FAFC; color: #475569; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 13px; }
+            QTableWidget { background-color: #F8FAFC; color: #475569; border: 1px solid #CBD5E1; border-radius: 6px; font-size: 13px; font-weight: bold; }
             QTableWidget::item { padding: 5px 15px; border-bottom: 1px solid #E2E8F0; }
             QHeaderView::section { background-color: #E2E8F0; color: #475569; font-weight: bold; font-size: 11px; padding: 10px; border: none; text-transform: uppercase;}
         """)
         layout_tarjeta.addWidget(self.tabla_detalles)
         
-        # --- BOTÓN DE ACCIÓN ---
+        # --- BOTÓN DE ACCIÓN (ANULAR TODA LA FACTURA) ---
         box_btn = QHBoxLayout()
         box_btn.setAlignment(Qt.AlignmentFlag.AlignRight)
         
-        self.btn_devolver = QPushButton("ANULAR FACTURA Y DEVOLVER STOCK")
+        self.btn_devolver = QPushButton("ANULAR FACTURA COMPLETA Y DEVOLVER TODO")
         self.btn_devolver.setEnabled(False) 
         self.btn_devolver.setFixedHeight(50)
         self.btn_devolver.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_devolver.setStyleSheet("""
-            QPushButton { 
-                background-color: #DC2626; 
-                color: white; 
-                border-radius: 6px; 
-                font-weight: 900; 
-                font-size: 14px; 
-                padding: 0 30px; 
-                letter-spacing: 1px;
-            } 
+            QPushButton { background-color: #DC2626; color: white; border-radius: 6px; font-weight: 900; font-size: 14px; padding: 0 30px; letter-spacing: 1px; } 
             QPushButton:hover { background-color: #B91C1C; }
-            QPushButton:disabled { 
-                background-color: #F1F5F9; 
-                color: #94A3B8; 
-                border: 1px solid #E2E8F0;
-            }
+            QPushButton:disabled { background-color: #F1F5F9; color: #94A3B8; border: 1px solid #E2E8F0; }
         """)
-        self.btn_devolver.clicked.connect(self.procesar_devolucion)
+        self.btn_devolver.clicked.connect(self.procesar_devolucion_total)
         box_btn.addWidget(self.btn_devolver)
         
         layout_tarjeta.addLayout(box_btn)
@@ -165,7 +140,6 @@ class VistaDevoluciones(QWidget):
 
     # ================= FUNCIONES DE RENDERIZADO =================
     def cargar_datos(self):
-        """Función reactiva requerida por main.py al cambiar de pestaña"""
         self.txt_buscador.clear()
         self.cargar_facturas()
 
@@ -181,19 +155,17 @@ class VistaDevoluciones(QWidget):
         for i, f in enumerate(facturas):
             self.tabla_facturas.insertRow(i)
             
-            # ID Formateado
             item_id = QTableWidgetItem(f"{f['id']:06d}")
             item_id.setForeground(QColor("#94A3B8"))
             item_id.setData(Qt.ItemDataRole.UserRole, f['id'])
             self.tabla_facturas.setItem(i, 0, item_id)
-            
             self.tabla_facturas.setItem(i, 1, QTableWidgetItem(f['fecha_hora']))
             self.tabla_facturas.setItem(i, 2, QTableWidgetItem(f['cliente_nombre']))
             self.tabla_facturas.setItem(i, 3, QTableWidgetItem(f['cliente_doc']))
             
             total_str = f"{f['moneda_simbolo']} {f['total_venta']:.2f}"
             item_total = QTableWidgetItem(total_str)
-            item_total.setForeground(QColor("#10B981")) # Verde Éxito
+            item_total.setForeground(QColor("#10B981"))
             self.tabla_facturas.setItem(i, 4, item_total)
 
     def seleccionar_factura(self):
@@ -228,34 +200,78 @@ class VistaDevoluciones(QWidget):
             self.tabla_detalles.setItem(i, 2, QTableWidgetItem(str(d['cantidad'])))
             self.tabla_detalles.setItem(i, 3, QTableWidgetItem(f"${d['precio_unitario']:.2f}"))
             self.tabla_detalles.setItem(i, 4, QTableWidgetItem(f"${d['subtotal']:.2f}"))
+            
+            # Botón de devolución parcial en cada fila
+            btn_rev = QPushButton(" Devolver")
+            btn_rev.setIcon(qta.icon('fa5s.undo', color='white'))
+            btn_rev.setStyleSheet("background-color: #DC2626; color: white; border-radius: 4px; padding: 6px; font-weight: bold; font-size: 11px;")
+            btn_rev.setCursor(Qt.CursorShape.PointingHandCursor)
+            
+            btn_rev.clicked.connect(lambda checked, det_id=d['id'], max_cant=d['cantidad'], nom=d['nombre']: self.procesar_devolucion_parcial(det_id, max_cant, nom))
+            
+            widget_btn = QWidget()
+            l_btn = QHBoxLayout(widget_btn)
+            l_btn.setContentsMargins(4, 4, 4, 4)
+            l_btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            l_btn.addWidget(btn_rev)
+            self.tabla_detalles.setCellWidget(i, 5, widget_btn)
 
-    # ================= ALERTAS BLANCAS Y PROCESAMIENTO =================
+    # ================= 🔥 ALERTAS Y MENSAJES CORREGIDOS (BLANCO PURO) 🔥 =================
     def mostrar_mensaje(self, titulo, texto, tipo="info"):
         msg = QMessageBox(self)
         msg.setWindowTitle(titulo)
         msg.setText(texto)
+        # Forzamos QWidget a blanco para sobreescribir la herencia oscura
         msg.setStyleSheet("""
-            QMessageBox { background-color: #FFFFFF; }
-            QLabel { color: #0F172A; font-size: 13px; font-weight: bold; } 
-            QPushButton { padding: 6px 20px; background-color: #0F172A; color: white; border-radius: 4px; font-weight: bold; }
+            QWidget { background-color: #FFFFFF; color: #0F172A; } 
+            QLabel { font-size: 13px; font-weight: bold; border: none; } 
+            QPushButton { padding: 8px 20px; background-color: #0F172A; color: white; border-radius: 4px; font-weight: bold; } 
             QPushButton:hover { background-color: #1E293B; }
         """)
         if tipo == "error": msg.setIcon(QMessageBox.Icon.Warning)
         else: msg.setIcon(QMessageBox.Icon.Information)
         msg.exec()
 
-    def procesar_devolucion(self):
+    def procesar_devolucion_parcial(self, detalle_id, max_cant, nombre_prod):
+        # Usamos un QInputDialog instanciado en lugar de estático para poder forzar el color blanco
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle("Devolución Parcial")
+        dialog.setLabelText(f"¿Cuántas unidades de {nombre_prod} desea devolver al inventario?\n(Compró {max_cant} unidades)")
+        dialog.setIntRange(1, int(max_cant))
+        dialog.setIntValue(1)
+        
+        # Forzamos fondo blanco y elementos claros
+        dialog.setStyleSheet("""
+            QWidget { background-color: #FFFFFF; color: #0F172A; } 
+            QLabel { font-size: 13px; font-weight: bold; border: none; } 
+            QSpinBox { padding: 8px; border: 1px solid #CBD5E1; border-radius: 4px; font-size: 14px; font-weight: bold; }
+            QPushButton { padding: 8px 20px; background-color: #0F172A; color: white; border-radius: 4px; font-weight: bold; } 
+            QPushButton:hover { background-color: #1E293B; }
+        """)
+        
+        if dialog.exec():
+            cant_dev = dialog.intValue()
+            exito, msg = db_returns.procesar_devolucion_parcial(self.factura_seleccionada, detalle_id, cant_dev, session.usuario_actual['id'])
+            if exito:
+                self.mostrar_mensaje("Devolución Exitosa", msg)
+                self.cargar_facturas() 
+            else:
+                self.mostrar_mensaje("Error", msg, "error")
+
+    def procesar_devolucion_total(self):
         if not self.factura_seleccionada: return
         
         msg_confirm = QMessageBox(self)
-        msg_confirm.setWindowTitle("Atención: Anulación de Factura")
-        msg_confirm.setText(f"¿Estás seguro que deseas ANULAR COMPLETAMENTE la factura #{self.factura_seleccionada:06d}?\n\nEsta acción:\n- Devolverá todos los productos al inventario.\n- Borrará el ingreso de dinero de la caja.\n- Anulará cualquier deuda asociada si fue a crédito.")
+        msg_confirm.setWindowTitle("Atención: Anulación Total")
+        msg_confirm.setText(f"¿Estás seguro que deseas ANULAR COMPLETAMENTE la factura #{self.factura_seleccionada:06d}?\n\nTodos los productos listados arriba volverán al inventario y se descontarán del dinero/deuda de la venta.")
         msg_confirm.setIcon(QMessageBox.Icon.Warning)
         msg_confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        # Forzamos fondo blanco
         msg_confirm.setStyleSheet("""
-            QMessageBox { background-color: #FFFFFF; }
-            QLabel { color: #0F172A; font-size: 13px; font-weight: bold; } 
-            QPushButton { padding: 6px 20px; background-color: #DC2626; color: white; border-radius: 4px; font-weight: bold; }
+            QWidget { background-color: #FFFFFF; color: #0F172A; } 
+            QLabel { font-size: 13px; font-weight: bold; border: none; } 
+            QPushButton { padding: 8px 20px; background-color: #DC2626; color: white; border-radius: 4px; font-weight: bold; } 
             QPushButton:hover { background-color: #B91C1C; }
         """)
         

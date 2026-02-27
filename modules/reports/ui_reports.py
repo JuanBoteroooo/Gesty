@@ -1,7 +1,8 @@
 import qtawesome as qta
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QAbstractItemView, QTabWidget)
-from PyQt6.QtCore import Qt
+                             QTableWidget, QTableWidgetItem, QHeaderView, QFrame, 
+                             QAbstractItemView, QTabWidget, QDateEdit, QPushButton, QSizePolicy)
+from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor, QFont
 from modules.reports import db_reports
 from modules.settings import db_settings
@@ -17,13 +18,70 @@ class VistaReportes(QWidget):
         layout_principal.setSpacing(20)
         
         # --- Encabezado ---
-        header_layout = QVBoxLayout()
+        header_layout = QHBoxLayout()
+        box_titulos = QVBoxLayout()
         lbl_titulo = QLabel("MÉTRICAS Y REPORTES DE NEGOCIO")
         lbl_titulo.setStyleSheet("font-size: 24px; font-weight: 900; color: #0F172A; letter-spacing: 1px;")
-        lbl_subtitulo = QLabel("Análisis detallado del rendimiento de la empresa durante el mes en curso.")
+        lbl_subtitulo = QLabel("Seleccione un rango de fechas para analizar el rendimiento de la empresa.")
         lbl_subtitulo.setStyleSheet("font-size: 14px; color: #64748B;")
-        header_layout.addWidget(lbl_titulo)
-        header_layout.addWidget(lbl_subtitulo)
+        box_titulos.addWidget(lbl_titulo)
+        box_titulos.addWidget(lbl_subtitulo)
+        
+        # 🔥 BARRA DE FILTROS DE FECHA (CORREGIDA Y EVITANDO CORTES) 🔥
+        panel_filtros = QFrame()
+        # Esto evita que el título aplaste el panel de filtros
+        panel_filtros.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        panel_filtros.setStyleSheet("""
+            QFrame { background-color: #FFFFFF; border-radius: 8px; border: 1px solid #E2E8F0; }
+            QLabel { font-weight: bold; color: #334155; border: none; }
+            QDateEdit { padding: 8px 10px; border: 1px solid #CBD5E1; border-radius: 4px; font-weight: bold; background-color: #F8FAFC; color: #0F172A; }
+            QDateEdit:focus { border: 2px solid #38BDF8; background-color: #FFFFFF; }
+        """)
+        layout_filtros = QHBoxLayout(panel_filtros)
+        layout_filtros.setContentsMargins(15, 10, 15, 10)
+        layout_filtros.setSpacing(15)
+        
+        # --- ARREGLO DEL CALENDARIO (LETRAS BLANCAS INVISIBLES) ---
+        estilo_calendario = """
+            QCalendarWidget QWidget { color: #0F172A; background-color: #FFFFFF; }
+            QCalendarWidget QWidget#qt_calendar_navigationbar { background-color: #F1F5F9; border-bottom: 1px solid #CBD5E1; padding: 2px; }
+            QCalendarWidget QToolButton { color: #0F172A; font-weight: bold; background-color: transparent; border-radius: 4px; padding: 4px; }
+            QCalendarWidget QToolButton:hover { background-color: #E2E8F0; }
+            QCalendarWidget QMenu { background-color: #FFFFFF; color: #0F172A; border: 1px solid #CBD5E1; }
+            QCalendarWidget QSpinBox { background-color: #FFFFFF; color: #0F172A; border: 1px solid #CBD5E1; }
+            QCalendarWidget QAbstractItemView:enabled { color: #0F172A; background-color: #FFFFFF; selection-background-color: #38BDF8; selection-color: #FFFFFF; }
+        """
+
+        lbl_desde = QLabel("Desde:")
+        self.date_desde = QDateEdit()
+        self.date_desde.setCalendarPopup(True)
+        self.date_desde.setDate(QDate.currentDate())
+        self.date_desde.setMinimumWidth(130) # Evita que se corte la fecha
+        self.date_desde.calendarWidget().setStyleSheet(estilo_calendario)
+        
+        lbl_hasta = QLabel("Hasta:")
+        self.date_hasta = QDateEdit()
+        self.date_hasta.setCalendarPopup(True)
+        self.date_hasta.setDate(QDate.currentDate())
+        self.date_hasta.setMinimumWidth(130) # Evita que se corte la fecha
+        self.date_hasta.calendarWidget().setStyleSheet(estilo_calendario)
+        
+        btn_filtrar = QPushButton(" Filtrar Reporte")
+        btn_filtrar.setIcon(qta.icon('fa5s.filter', color='white'))
+        btn_filtrar.setStyleSheet("background-color: #0F172A; color: white; padding: 10px 20px; border-radius: 6px; font-weight: bold;")
+        btn_filtrar.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_filtrar.clicked.connect(self.cargar_datos)
+        
+        layout_filtros.addWidget(lbl_desde)
+        layout_filtros.addWidget(self.date_desde)
+        layout_filtros.addWidget(lbl_hasta)
+        layout_filtros.addWidget(self.date_hasta)
+        layout_filtros.addWidget(btn_filtrar)
+        
+        header_layout.addLayout(box_titulos)
+        header_layout.addStretch()
+        header_layout.addWidget(panel_filtros)
+        
         layout_principal.addLayout(header_layout)
         
         # ================= TABS DE NAVEGACIÓN =================
@@ -57,17 +115,17 @@ class VistaReportes(QWidget):
         # KPIs Superiores
         layout_kpis = QHBoxLayout()
         layout_kpis.setSpacing(15)
-        self.tarjeta_ventas = self.crear_tarjeta_kpi("Ventas Brutas Totales", "$0.00", "#2563EB", "fa5s.money-bill-wave") 
-        self.tarjeta_costos = self.crear_tarjeta_kpi("Costo Total de Mercancía", "$0.00", "#DC2626", "fa5s.shopping-cart") 
+        self.tarjeta_ventas = self.crear_tarjeta_kpi("Ventas Brutas del Período", "$0.00", "#2563EB", "fa5s.money-bill-wave") 
+        self.tarjeta_costos = self.crear_tarjeta_kpi("Costo de la Mercancía", "$0.00", "#DC2626", "fa5s.shopping-cart") 
         self.tarjeta_ganancia = self.crear_tarjeta_kpi("Ganancia Neta Estimada", "$0.00", "#10B981", "fa5s.chart-line") 
         layout_kpis.addWidget(self.tarjeta_ventas['widget'])
         layout_kpis.addWidget(self.tarjeta_costos['widget'])
         layout_kpis.addWidget(self.tarjeta_ganancia['widget'])
         layout.addLayout(layout_kpis)
         
-        # Tabla Flujo
+        # Tabla Flujo de Caja
         layout.addWidget(QLabel("<b>💵 Flujo de Caja por Método de Pago</b>", styleSheet="font-size: 16px; color: #0F172A; margin-top: 10px;"))
-        self.tabla_metodos = self.crear_tabla(["MÉTODO DE PAGO", "MONEDA", "TOTAL RECAUDADO (MES ACTUAL)"])
+        self.tabla_metodos = self.crear_tabla(["MÉTODO DE PAGO", "MONEDA", "RECAUDADO (NATIVO)", "EQUIV. EN DÓLARES BASE"])
         layout.addWidget(self.tabla_metodos)
 
     # ================= PESTAÑA 2: INVENTARIO =================
@@ -98,7 +156,7 @@ class VistaReportes(QWidget):
         layout = QVBoxLayout(self.tab_clientes)
         layout.setContentsMargins(20, 20, 20, 20)
         
-        lbl_info = QLabel("<b>🏆 Los 10 Mejores Clientes del Mes</b>")
+        lbl_info = QLabel("<b>🏆 Los Mejores Clientes del Período</b>")
         lbl_info.setStyleSheet("font-size: 16px; color: #0F172A; margin-bottom: 10px;")
         layout.addWidget(lbl_info)
         
@@ -152,30 +210,36 @@ class VistaReportes(QWidget):
 
     # ================= LLENADO DE DATOS =================
     def cargar_datos(self):
-        """Llamado automáticamente por main.py"""
         monedas = db_settings.obtener_monedas()
         simbolo_base = next((m['simbolo'] for m in monedas if m['es_principal']), "$")
         
+        fecha_inicio = self.date_desde.date().toString("yyyy-MM-dd")
+        fecha_fin = self.date_hasta.date().toString("yyyy-MM-dd")
+        
         # 1. KPIs Finanzas
-        kpis = db_reports.obtener_kpis_mes_actual()
+        kpis = db_reports.obtener_kpis(fecha_inicio, fecha_fin)
         self.tarjeta_ventas['lbl_valor'].setText(f"{simbolo_base} {kpis['venta_total']:,.2f}")
         self.tarjeta_costos['lbl_valor'].setText(f"{simbolo_base} {kpis['costo_total']:,.2f}")
         self.tarjeta_ganancia['lbl_valor'].setText(f"{simbolo_base} {kpis['ganancia']:,.2f}")
         
-        # 2. Flujo por Método
-        ingresos = db_reports.obtener_ingresos_por_metodo()
+        # 2. Flujo por Método (CONVERSIÓN DE MONEDAS)
+        ingresos = db_reports.obtener_ingresos_por_metodo(fecha_inicio, fecha_fin)
         self.tabla_metodos.setRowCount(0)
         for i, row in enumerate(ingresos):
             self.tabla_metodos.insertRow(i)
             self.tabla_metodos.setItem(i, 0, QTableWidgetItem(row['metodo']))
             self.tabla_metodos.setItem(i, 1, QTableWidgetItem(row['simbolo']))
             
-            item_monto = QTableWidgetItem(f"{row['total_recaudado']:,.2f}")
-            item_monto.setForeground(QColor("#10B981")) # Verde
-            self.tabla_metodos.setItem(i, 2, item_monto)
+            item_nativo = QTableWidgetItem(f"{row['simbolo']} {row['total_recaudado']:,.2f}")
+            item_nativo.setForeground(QColor("#10B981")) 
+            self.tabla_metodos.setItem(i, 2, item_nativo)
+            
+            item_equiv = QTableWidgetItem(f"{simbolo_base} {row['equiv_base']:,.2f}")
+            item_equiv.setForeground(QColor("#64748B"))
+            self.tabla_metodos.setItem(i, 3, item_equiv)
 
         # 3. Top Productos
-        top_prods = db_reports.obtener_top_productos()
+        top_prods = db_reports.obtener_top_productos(fecha_inicio, fecha_fin)
         self.tabla_top.setRowCount(0)
         for i, row in enumerate(top_prods):
             self.tabla_top.insertRow(i)
@@ -193,13 +257,13 @@ class VistaReportes(QWidget):
             self.tabla_stock.setItem(i, 1, QTableWidgetItem(row['nombre']))
             
             item_act = QTableWidgetItem(str(row['stock_actual']))
-            item_act.setForeground(QColor("#DC2626")) # Rojo
+            item_act.setForeground(QColor("#DC2626")) 
             self.tabla_stock.setItem(i, 2, item_act)
             
             self.tabla_stock.setItem(i, 3, QTableWidgetItem(str(row['cantidad_minima'])))
 
         # 5. Top Clientes
-        top_clientes = db_reports.obtener_top_clientes()
+        top_clientes = db_reports.obtener_top_clientes(fecha_inicio, fecha_fin)
         self.tabla_clientes.setRowCount(0)
         for i, row in enumerate(top_clientes):
             self.tabla_clientes.insertRow(i)
@@ -208,5 +272,5 @@ class VistaReportes(QWidget):
             self.tabla_clientes.setItem(i, 2, QTableWidgetItem(f"{row['total_compras']} facturas"))
             
             item_dinero = QTableWidgetItem(f"{simbolo_base} {row['dinero_gastado']:,.2f}")
-            item_dinero.setForeground(QColor("#2563EB")) # Azul
+            item_dinero.setForeground(QColor("#2563EB"))
             self.tabla_clientes.setItem(i, 3, item_dinero)

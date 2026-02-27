@@ -10,6 +10,7 @@ from modules.inventory.ui_inventory import VistaInventario
 from modules.sales.ui_sales import VistaVentas
 from modules.customers.ui_customers import VistaClientes
 from modules.suppliers.ui_suppliers import VistaProveedores
+from modules.suppliers.ui_cxp import VistaCuentasPorPagar  # <-- Nuevo módulo
 from modules.settings.ui_settings import VistaAjustes
 from modules.returns.ui_returns import VistaDevoluciones
 from modules.reports.ui_reports import VistaReportes
@@ -17,7 +18,7 @@ from modules.home.ui_home import VistaInicio
 from modules.users.ui_login import VistaLogin
 from modules.customers.ui_cxc import VistaCXC
 from modules.production.ui_production import VistaProduccion
-from modules.finance.ui_finance import VistaFinanzas  # <-- Nuevo módulo agregado
+from modules.finance.ui_finance import VistaFinanzas 
 from utils import session
 
 class GestyERP(QMainWindow):
@@ -105,12 +106,13 @@ class GestyERP(QMainWindow):
             "Inventario y Stock",     # 2
             "Directorio de Clientes", # 3
             "Compras a Proveedores",  # 4
-            "Devoluciones",           # 5
-            "Reportes y Métricas",    # 6
-            "Cuentas por Cobrar",     # 7
-            "Producción y Combos",    # 8
-            "Control de Finanzas",    # 9  <-- Agregado
-            "Configuración del ERP"   # 10 <-- Índice desplazado
+            "Cuentas por Pagar",      # 5  <-- Agregado (Sin abreviatura)
+            "Devoluciones",           # 6
+            "Reportes y Métricas",    # 7
+            "Cuentas por Cobrar",     # 8
+            "Producción y Combos",    # 9
+            "Control de Finanzas",    # 10
+            "Configuración del ERP"   # 11
         ]
         
         # SEGURIDAD: LÓGICA DE PERMISOS
@@ -119,9 +121,9 @@ class GestyERP(QMainWindow):
         if rol_usuario == 3: # CAJERO
             indices_permitidos = [0, 1, 3] 
         elif rol_usuario == 2: # GERENTE
-            indices_permitidos = [0, 1, 2, 3, 4, 5, 7, 8, 9]
+            indices_permitidos = [0, 1, 2, 3, 4, 5, 6, 8, 9, 10]
         else: # ADMINISTRADOR
-            indices_permitidos = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+            indices_permitidos = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
         
         for index, nombre in enumerate(nombres_menu):
             btn = QPushButton(nombre)
@@ -163,17 +165,18 @@ class GestyERP(QMainWindow):
         self.stacked_widget.setStyleSheet("background-color: transparent;")
         
         # EL ORDEN AQUÍ ES CRÍTICO (Debe coincidir con los índices del menú)
-        self.stacked_widget.addWidget(VistaInicio())       # 0
-        self.stacked_widget.addWidget(VistaVentas())       # 1
-        self.stacked_widget.addWidget(VistaInventario())   # 2
-        self.stacked_widget.addWidget(VistaClientes())     # 3
-        self.stacked_widget.addWidget(VistaProveedores())  # 4
-        self.stacked_widget.addWidget(VistaDevoluciones()) # 5
-        self.stacked_widget.addWidget(VistaReportes())     # 6
-        self.stacked_widget.addWidget(VistaCXC())          # 7
-        self.stacked_widget.addWidget(VistaProduccion())   # 8
-        self.stacked_widget.addWidget(VistaFinanzas())     # 9
-        self.stacked_widget.addWidget(VistaAjustes())      # 10
+        self.stacked_widget.addWidget(VistaInicio())          # 0
+        self.stacked_widget.addWidget(VistaVentas())          # 1
+        self.stacked_widget.addWidget(VistaInventario())      # 2
+        self.stacked_widget.addWidget(VistaClientes())        # 3
+        self.stacked_widget.addWidget(VistaProveedores())     # 4
+        self.stacked_widget.addWidget(VistaCuentasPorPagar()) # 5
+        self.stacked_widget.addWidget(VistaDevoluciones())    # 6
+        self.stacked_widget.addWidget(VistaReportes())        # 7
+        self.stacked_widget.addWidget(VistaCXC())             # 8
+        self.stacked_widget.addWidget(VistaProduccion())      # 9
+        self.stacked_widget.addWidget(VistaFinanzas())        # 10
+        self.stacked_widget.addWidget(VistaAjustes())         # 11
         
         layout_principal.addWidget(self.sidebar)
         layout_principal.addWidget(self.stacked_widget)
@@ -214,7 +217,7 @@ if __name__ == "__main__":
     
     if login.exec() == QDialog.DialogCode.Accepted:
         ventana = GestyERP() 
-        ventana.showMaximized() # Solo se necesita esta instrucción para la pantalla completa útil
+        ventana.showMaximized() # Arranca en pantalla completa
         sys.exit(app.exec())
     else:
         sys.exit()

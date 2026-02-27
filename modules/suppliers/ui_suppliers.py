@@ -2,8 +2,8 @@ import qtawesome as qta
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QLineEdit, QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QDialog, QFormLayout, QMessageBox, QFrame, 
-                             QAbstractItemView, QTabWidget, QComboBox, QSpinBox, QDoubleSpinBox)
-from PyQt6.QtCore import Qt, QSize
+                             QAbstractItemView, QTabWidget, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit)
+from PyQt6.QtCore import Qt, QSize, QDate
 from PyQt6.QtGui import QColor, QFont
 from modules.suppliers import db_suppliers
 from utils import session
@@ -114,7 +114,7 @@ class VistaProveedores(QWidget):
         msg.setText(texto)
         msg.setStyleSheet("""
             QMessageBox { background-color: #FFFFFF; }
-            QLabel { color: #0F172A; font-size: 13px; font-weight: bold; } 
+            QLabel { color: #0F172A; font-size: 13px; font-weight: bold; border: none; } 
             QPushButton { padding: 6px 20px; background-color: #0F172A; color: white; border-radius: 4px; font-weight: bold; }
             QPushButton:hover { background-color: #1E293B; }
         """)
@@ -137,17 +137,10 @@ class VistaProveedores(QWidget):
         self.txt_buscador_compra.setFixedHeight(45)
         self.txt_buscador_compra.setStyleSheet("""
             QLineEdit {
-                padding: 5px 15px; 
-                border: 1px solid #CBD5E1; 
-                border-radius: 6px; 
-                font-size: 14px; 
-                color: #0F172A; 
-                background-color: #F8FAFC;
+                padding: 5px 15px; border: 1px solid #CBD5E1; border-radius: 6px; 
+                font-size: 14px; color: #0F172A; background-color: #F8FAFC;
             }
-            QLineEdit:focus {
-                border: 2px solid #38BDF8;
-                background-color: #FFFFFF;
-            }
+            QLineEdit:focus { border: 2px solid #38BDF8; background-color: #FFFFFF; }
         """)
         self.txt_buscador_compra.textChanged.connect(self.buscar_productos_compra)
         self.txt_buscador_compra.installEventFilter(self)
@@ -162,7 +155,6 @@ class VistaProveedores(QWidget):
         header_busqueda.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header_busqueda.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header_busqueda.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header_busqueda.setStretchLastSection(False)
         
         self.tabla_busqueda_compra.verticalHeader().setVisible(False)
         self.tabla_busqueda_compra.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -188,7 +180,6 @@ class VistaProveedores(QWidget):
         # TABLA DEL CARRITO
         self.tabla_carrito_compra = QTableWidget()
         self.tabla_carrito_compra.setColumnCount(6)
-        # 🔥 EL SECRETO ESTÁ AQUÍ: Le damos un nombre a la última columna ("ACCIÓN") para que el borde gris se dibuje completo
         self.tabla_carrito_compra.setHorizontalHeaderLabels(["ID", "PRODUCTO", "CANTIDAD", "COSTO U. ($)", "SUBTOTAL ($)", "ACCIÓN"])
         
         header_carrito = self.tabla_carrito_compra.horizontalHeader()
@@ -197,10 +188,8 @@ class VistaProveedores(QWidget):
         header_carrito.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents) 
         header_carrito.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents) 
         header_carrito.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents) 
-        # 🔥 Y FIJAMOS EL ANCHO DE LA ACCIÓN A 80PX EXACTOS
         header_carrito.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed) 
         self.tabla_carrito_compra.setColumnWidth(5, 80) 
-        header_carrito.setStretchLastSection(False) 
         
         self.tabla_carrito_compra.verticalHeader().setVisible(False)
         self.tabla_carrito_compra.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -209,12 +198,11 @@ class VistaProveedores(QWidget):
         self.tabla_carrito_compra.setStyleSheet("""
             QTableWidget { background-color: #FFFFFF; color: #334155; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 14px; font-weight: bold; }
             QTableWidget::item { padding: 5px 15px; border-bottom: 1px solid #F1F5F9; }
-            QTableWidget::item:selected { background-color: #EFF6FF; color: #0F172A; }
             QHeaderView::section { background-color: #F8FAFC; color: #64748B; font-weight: bold; font-size: 11px; padding: 12px; border: none; border-bottom: 2px solid #E2E8F0; text-transform: uppercase; }
         """)
         panel_izq.addWidget(self.tabla_carrito_compra)
         
-        # --- PANEL DERECHO ---
+        # --- PANEL DERECHO (AHORA CON FECHAS DE PAGO) ---
         panel_der = QFrame()
         panel_der.setFixedWidth(350)
         panel_der.setStyleSheet("QFrame { background-color: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; }")
@@ -222,14 +210,21 @@ class VistaProveedores(QWidget):
         layout_der.setContentsMargins(25, 25, 25, 25)
         layout_der.setSpacing(20)
         
-        estilo_lbl = "font-size: 13px; font-weight: bold; color: #64748B;"
+        estilo_lbl = "font-size: 13px; font-weight: bold; color: #64748B; border: none;"
         estilo_input = """
-            QComboBox, QLineEdit {
+            QComboBox, QLineEdit, QDateEdit {
                 padding: 12px; border: 1px solid #CBD5E1; border-radius: 6px; 
                 background-color: #FFFFFF; color: #0F172A; font-weight: bold; font-size: 14px;
             }
-            QComboBox:focus, QLineEdit:focus { border: 2px solid #38BDF8; }
-            QComboBox QAbstractItemView { background-color: #FFFFFF; color: #0F172A; selection-background-color: #F8FAFC; }
+            QComboBox:focus, QLineEdit:focus, QDateEdit:focus { border: 2px solid #38BDF8; }
+            QComboBox QAbstractItemView { background-color: #FFFFFF; color: #0F172A; }
+            QDateEdit::drop-down { border: none; }
+        """
+        estilo_calendario = """
+            QCalendarWidget QWidget { color: #0F172A; background-color: #FFFFFF; }
+            QCalendarWidget QWidget#qt_calendar_navigationbar { background-color: #F1F5F9; border-bottom: 1px solid #CBD5E1; }
+            QCalendarWidget QToolButton { color: #0F172A; font-weight: bold; border-radius: 4px; padding: 4px; }
+            QCalendarWidget QAbstractItemView:enabled { color: #0F172A; selection-background-color: #38BDF8; selection-color: white; }
         """
         
         layout_der.addWidget(QLabel("Proveedor Emisor:", styleSheet=estilo_lbl))
@@ -237,10 +232,23 @@ class VistaProveedores(QWidget):
         self.combo_prov_compra.setStyleSheet(estilo_input)
         layout_der.addWidget(self.combo_prov_compra)
         
-        layout_der.addWidget(QLabel("Nro. Factura Proveedor (Opcional):", styleSheet=estilo_lbl))
+        # 🔥 AHORA ES OBLIGATORIO Y ROJO
+        lbl_fac = QLabel("Nro. Factura Proveedor (Obligatorio):")
+        lbl_fac.setStyleSheet("font-size: 13px; font-weight: bold; color: #DC2626; border: none;")
+        layout_der.addWidget(lbl_fac)
         self.txt_nro_factura = QLineEdit()
+        self.txt_nro_factura.setPlaceholderText("Ej: FAC-4567")
         self.txt_nro_factura.setStyleSheet(estilo_input)
         layout_der.addWidget(self.txt_nro_factura)
+
+        # 🔥 FECHA LÍMITE DE PAGO PARA CxP
+        layout_der.addWidget(QLabel("Límite de Pago para esta Factura:", styleSheet=estilo_lbl))
+        self.date_vencimiento = QDateEdit()
+        self.date_vencimiento.setCalendarPopup(True)
+        self.date_vencimiento.setDate(QDate.currentDate().addDays(15)) # Por defecto te da 15 días para pagar
+        self.date_vencimiento.setStyleSheet(estilo_input)
+        self.date_vencimiento.calendarWidget().setStyleSheet(estilo_calendario)
+        layout_der.addWidget(self.date_vencimiento)
         
         layout_der.addWidget(QLabel("Almacén de Recepción:", styleSheet=estilo_lbl))
         self.combo_almacen_compra = QComboBox()
@@ -250,11 +258,11 @@ class VistaProveedores(QWidget):
         layout_der.addStretch()
         
         self.lbl_total_compra = QLabel("TOTAL: $ 0.00")
-        self.lbl_total_compra.setStyleSheet("font-size: 28px; font-weight: 900; color: #DC2626; text-align: center; margin-bottom: 10px;")
+        self.lbl_total_compra.setStyleSheet("font-size: 28px; font-weight: 900; color: #DC2626; text-align: center; margin-bottom: 10px; border: none;")
         self.lbl_total_compra.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout_der.addWidget(self.lbl_total_compra)
         
-        btn_procesar = QPushButton("Registrar Compra")
+        btn_procesar = QPushButton("Ingresar y Crear Deuda")
         btn_procesar.setFixedHeight(55)
         btn_procesar.setStyleSheet("""
             QPushButton { background-color: #0F172A; color: white; border-radius: 6px; font-weight: bold; font-size: 15px; } 
@@ -308,7 +316,6 @@ class VistaProveedores(QWidget):
         header_dir.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header_dir.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header_dir.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        header_dir.setStretchLastSection(True) # Aquí sí queremos que la dirección estire hasta el final
         
         self.tabla_prov.verticalHeader().setVisible(False)
         self.tabla_prov.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -406,7 +413,7 @@ class VistaProveedores(QWidget):
         msg_confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg_confirm.setStyleSheet("""
             QMessageBox { background-color: #FFFFFF; }
-            QLabel { color: #0F172A; font-size: 13px; font-weight: bold; } 
+            QLabel { color: #0F172A; font-size: 13px; font-weight: bold; border: none; } 
             QPushButton { padding: 6px 20px; background-color: #DC2626; color: white; border-radius: 4px; font-weight: bold; }
             QPushButton:hover { background-color: #B91C1C; }
         """)
@@ -526,17 +533,12 @@ class VistaProveedores(QWidget):
             item_sub.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
             self.tabla_carrito_compra.setItem(fila, 4, item_sub)
             
-            # 🔥 PAPELERA DE QTAWESOME (Centrada perfectamente y sin fallas de borde) 🔥
             btn_quitar = QPushButton() 
             btn_quitar.setIcon(qta.icon('fa5s.trash-alt', color='#DC2626'))
             btn_quitar.setIconSize(QSize(18, 18))
             btn_quitar.setFixedSize(36, 36)
-            btn_quitar.setToolTip("Eliminar línea")
             btn_quitar.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_quitar.setStyleSheet("""
-                QPushButton { background-color: #FEE2E2; border: none; border-radius: 6px; }
-                QPushButton:hover { background-color: #FECACA; }
-            """)
+            btn_quitar.setStyleSheet("QPushButton { background-color: #FEE2E2; border: none; border-radius: 6px; } QPushButton:hover { background-color: #FECACA; }")
             btn_quitar.clicked.connect(lambda checked, p_id=prod_id: self.quitar_del_carrito_compra(p_id))
             
             widget_btn = QWidget()
@@ -579,29 +581,35 @@ class VistaProveedores(QWidget):
 
     def procesar_compra_final(self):
         if not self.carrito_compra: return self.mostrar_mensaje("Error", "La lista de ingreso está vacía.", "error")
+        
         prov_id = self.combo_prov_compra.currentData()
         alm_id = self.combo_almacen_compra.currentData()
-        if not prov_id or not alm_id: return self.mostrar_mensaje("Error", "Seleccione el Proveedor Emisor y el Almacén de Recepción.", "error")
-        
         nro_factura = self.txt_nro_factura.text().strip()
+        fecha_vence = self.date_vencimiento.date().toString("yyyy-MM-dd") # 🔥 CAPTURAMOS LA FECHA
+        
+        if not prov_id or not alm_id: return self.mostrar_mensaje("Error", "Seleccione el Proveedor Emisor y el Almacén de Recepción.", "error")
+        if not nro_factura: return self.mostrar_mensaje("Error", "El Nro. de Factura Proveedor es OBLIGATORIO para llevar el control de Cuentas por Pagar (CxP).", "error")
+        
         total_compra = sum(item['cantidad'] * item['costo'] for item in self.carrito_compra.values())
         
         msg_confirm = QMessageBox(self)
-        msg_confirm.setWindowTitle("Confirmar Ingreso")
-        msg_confirm.setText(f"¿Registrar ingreso de mercancía por $ {total_compra:.2f}?\n\nEsta acción sumará los productos al inventario y actualizará sus costos de compra.")
+        msg_confirm.setWindowTitle("Confirmar Ingreso a Inventario y CxP")
+        msg_confirm.setText(f"¿Registrar compra por $ {total_compra:.2f} con Factura N° {nro_factura}?\n\nEsta acción sumará la mercancía al inventario y creará automáticamente la deuda en el módulo Cuentas por Pagar (CxP).")
         msg_confirm.setIcon(QMessageBox.Icon.Question)
         msg_confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msg_confirm.setStyleSheet("""
             QMessageBox { background-color: #FFFFFF; }
-            QLabel { color: #0F172A; font-size: 13px; font-weight: bold; } 
+            QLabel { color: #0F172A; font-size: 13px; font-weight: bold; border: none;} 
             QPushButton { padding: 6px 20px; background-color: #0F172A; color: white; border-radius: 4px; font-weight: bold; }
             QPushButton:hover { background-color: #1E293B; }
         """)
         
         if msg_confirm.exec() == QMessageBox.StandardButton.Yes:
+            # 🔥 PASAMOS LA FECHA DE VENCIMIENTO A LA FUNCIÓN DE BASE DE DATOS
             exito, msg = db_suppliers.procesar_compra(
                 prov_id, nro_factura, alm_id, total_compra, 
-                list(self.carrito_compra.values()), session.usuario_actual['id']
+                list(self.carrito_compra.values()), session.usuario_actual['id'],
+                fecha_vence
             )
             if exito:
                 self.mostrar_mensaje("Éxito", msg)

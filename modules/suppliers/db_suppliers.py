@@ -1,4 +1,5 @@
 from database.connection import connect
+from modules.suppliers import db_cxp # 🔥 IMPORTAMOS LA BD DE CxP PARA CONECTARLOS
 
 # ==========================================
 # 1. DIRECTORIO DE PROVEEDORES (CRUD)
@@ -68,8 +69,8 @@ def buscar_productos_compra(termino):
     conn.close()
     return res
 
-def procesar_compra(proveedor_id, nro_factura, almacen_id, total_compra, carrito, usuario_id):
-    """Guarda la compra, suma el stock, actualiza costos y registra en Kardex"""
+def procesar_compra(proveedor_id, nro_factura, almacen_id, total_compra, carrito, usuario_id, fecha_vencimiento):
+    """Guarda la compra, suma el stock, actualiza costos y CREA LA DEUDA EN CxP AUTOMÁTICAMENTE"""
     conn = connect()
     cursor = conn.cursor()
     try:
@@ -88,14 +89,13 @@ def procesar_compra(proveedor_id, nro_factura, almacen_id, total_compra, carrito
             """, (compra_id, item['id'], almacen_id, item['cantidad'], item['costo']))
             
             # 3. Sumar el Stock Físico en el Almacén Destino
-            # Verificamos si ya existe el producto en ese almacén
             cursor.execute("SELECT id FROM inventario_almacenes WHERE producto_id = ? AND almacen_id = ?", (item['id'], almacen_id))
             if cursor.fetchone():
                 cursor.execute("UPDATE inventario_almacenes SET cantidad = cantidad + ? WHERE producto_id = ? AND almacen_id = ?", (item['cantidad'], item['id'], almacen_id))
             else:
                 cursor.execute("INSERT INTO inventario_almacenes (producto_id, almacen_id, cantidad) VALUES (?, ?, ?)", (item['id'], almacen_id, item['cantidad']))
             
-            # 4. Actualizar el Costo de Compra del Producto (UPSERT)
+            # 4. Actualizar el Costo de Compra del Producto
             cursor.execute("""
                 INSERT INTO productos_proveedores (producto_id, proveedor_id, precio_costo, fecha_actualizacion)
                 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
@@ -104,14 +104,21 @@ def procesar_compra(proveedor_id, nro_factura, almacen_id, total_compra, carrito
             """, (item['id'], proveedor_id, item['costo']))
 
             # 5. Registrar el movimiento en el KARDEX
-            motivo = f"Compra. Fac. Prov: {nro_factura}" if nro_factura else f"Ingreso de Compra #{compra_id}"
+            motivo = f"Compra. Fac. Prov: {nro_factura}"
             cursor.execute("""
                 INSERT INTO movimientos_inventario (producto_id, almacen_destino_id, tipo_movimiento, cantidad, motivo, usuario_id)
                 VALUES (?, ?, 'ENTRADA', ?, ?, ?)
             """, (item['id'], almacen_id, item['cantidad'], motivo, usuario_id))
             
+        # 🔥 6. ENVIAR A CUENTAS POR PAGAR (CxP) AUTOMÁTICAMENTE 🔥
+        db_cxp.inicializar_tablas_cxp() # Asegura que la tabla exista
+        cursor.execute("""
+            INSERT INTO cuentas_por_pagar (proveedor_id, numero_factura, fecha_emision, fecha_vencimiento, monto_total, saldo_pendiente)
+            VALUES (?, ?, DATE('now'), ?, ?, ?)
+        """, (proveedor_id, nro_factura, fecha_vencimiento, total_compra, total_compra))
+
         conn.commit()
-        return True, "Compra registrada. Stock, costos y Kardex actualizados."
+        return True, "Ingreso Exitoso.\n\nInventario sumado y Factura enviada a Cuentas por Pagar (CxP)."
     except Exception as e:
         conn.rollback() 
         return False, f"Error al procesar compra: {str(e)}"
